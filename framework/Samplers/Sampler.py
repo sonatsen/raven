@@ -583,12 +583,12 @@ class Sampler(utils.metaclass_insert(abc.ABCMeta,BaseType),Assembler):
           self.raiseAnError(NotImplementedError,'transformation method is not yet implemented for ' + self.transformationMethod[dist] + ' method')
     ##### REDUNDANT FUNCTIONALS #####
     # generate the function variable values
+    ##### CONSTANT VALUES ######
+    self._constantVariables()
     for var in self.dependentSample.keys():
       test=self.funcDict[var].evaluate("evaluate",self.values)
       for corrVar in var.split(","):
         self.values[corrVar.strip()] = test
-    ##### CONSTANT VALUES ######
-    self._constantVariables()
     ##### RESTART #####
     #check if point already exists
     if self.restartData is not None:
