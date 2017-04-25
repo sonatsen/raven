@@ -64,35 +64,51 @@ class Origen(GenericCode):
       @ Out, output, string, output csv file containing the tables of interest specified in the input
     """
     keywordDictionary = {}
+    caseDictionary = {}
+    tablesDictionary = {}
     # open the original ORIGEN output file for reading
     fileobject = open(os.path.join(workingDir,output.split("out~")[1])  + '.out', 'r')
     # create the csv file for writing
     outputCSVfile = open (os.path.join(workingDir,output) + '.csv','w+') # store all the lines into a list
     lines = fileobject.readlines()
     for line in lines:
-      listSplitted = line.split()
+      listSplitted = [l.strip("'") for l in line.split()]
       for keyword in self.origenCaseNames:
         for case in listSplitted:
           if keyword == case:
             for tables in self.origenOutputTables:
               if listSplitted[listSplitted.index(keyword)-3] == tables:
                 newLineTime = lines[lines.index(line)+5]   
-                keywordDictionary['time'] = [s.strip('y') for s in newLineTime.split()]
+                caseDictionary['time'] = [s.strip('y') for s in newLineTime.split()]
                 i = 1
                 while (newLineTime[0] != '='):
                   newLineTime = lines[lines.index(line)+5+i]   
                   if (newLineTime[0] != '-') and ((newLineTime[0] != '=')):
                     temp = newLineTime.split()
-                  if temp[0] == 'totals': #this is to add only totals to the database
-                    keywordDictionary[temp[0]] = temp[1:]
+                    tablesDictionary[temp[0]] = []
+                    for j in temp[1:]:
+                      try:
+                        tablesDictionary[temp[0]].append(float(j))
+                      except ValueError:
+                        tablesDictionary[temp[0]].append(float(0))                  
                   i = i + 1
-    outputCSVfile.write(','.join(keywordDictionary.keys()))
-    outputCSVfile.write('\n')
-    for i in range(len(keywordDictionary['time'])):
-      for key in keywordDictionary.keys():
-        if key == keywordDictionary.keys()[-1]:
-          outputCSVfile.write(keywordDictionary[key][i])
+                caseDictionary[tables] = tablesDictionary
+            keywordDictionary[case] = caseDictionary
+    for case in keywordDictionary.keys():
+      for table in keywordDictionary[case].keys():
+        if (table != 'time'):          
+          for key in keywordDictionary[case][table].keys():
+            outputCSVfile.write(str(case)+'_'+str(table)+'_'+str(key)+',')
         else:
-          outputCSVfile.write(keywordDictionary[key][i]+',')
-      outputCSVfile.write('\n')
+          outputCSVfile.write(str(case)+'_'+str('time'))
+    outputCSVfile.write('\n')
+    for case in keywordDictionary.keys():
+      for i in range(len(keywordDictionary[case]['time'])):
+        for table in keywordDictionary[case].keys():
+          if (table != 'time'):          
+            for key in keywordDictionary[case][table].keys():
+              outputCSVfile.write(str(keywordDictionary[case][table][key][i])+',')
+          else:
+            outputCSVfile.write(str(keywordDictionary[case][table][i]))
+        outputCSVfile.write('\n')
     outputCSVfile.close()
