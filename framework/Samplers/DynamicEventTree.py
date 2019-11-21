@@ -23,7 +23,6 @@
 from __future__ import division, print_function, unicode_literals, absolute_import
 import warnings
 warnings.simplefilter('default',DeprecationWarning)
-#if not 'xrange' in dir(__builtins__): xrange = range
 #End compatibility block for Python 3----------------------------------------------------------------
 
 #External Modules------------------------------------------------------------------------------------
@@ -43,6 +42,7 @@ from .MonteCarlo import MonteCarlo
 from .Stratified import Stratified
 from .Sampler import Sampler
 from utils import utils
+from utils import InputData
 import utils.TreeStructure as ETS
 #Internal Modules End-------------------------------------------------------------------------------
 
@@ -50,6 +50,45 @@ class DynamicEventTree(Grid):
   """
   DYNAMIC EVENT TREE Sampler (DET)
   """
+
+  @classmethod
+  def getInputSpecification(cls):
+    """
+      Method to get a reference to a class that specifies the input data for
+      class cls.
+      @ In, cls, the class for which we are retrieving the specification
+      @ Out, inputSpecification, InputData.ParameterInput, class to use for
+        specifying input of cls.
+    """
+    inputSpecification = super(DynamicEventTree, cls).getInputSpecification()
+
+    inputSpecification.addParam("printEndXmlSummary", InputData.StringType)
+    inputSpecification.addParam("maxSimulationType", InputData.FloatType)
+    inputSpecification.addParam("removeXmlBranchInfo", InputData.StringType)
+
+    oldSub = inputSpecification.popSub("Distribution")
+    newDistributionInput = InputData.parameterInputFactory("Distribution", baseNode=oldSub)
+    gridInput = InputData.parameterInputFactory("grid", contentType=InputData.StringType)
+    gridInput.addParam("type", InputData.StringType)
+    gridInput.addParam("construction", InputData.StringType)
+    gridInput.addParam("steps", InputData.IntegerType)
+
+    newDistributionInput.addSub(gridInput)
+    inputSpecification.addSub(newDistributionInput)
+
+    #Strict mode off because basically this allows things to be passed to
+    # sub Samplers, which will be checked later.
+    hybridSamplerInput = InputData.parameterInputFactory("HybridSampler", strictMode=False)
+    hybridSamplerInput.addParam("type", InputData.StringType)
+
+    for nodeName in ['variable','Distribution']:
+      nodeInput = InputData.parameterInputFactory(nodeName, strictMode=False)
+      nodeInput.addParam("name", InputData.StringType)
+      hybridSamplerInput.addSub(nodeInput)
+    inputSpecification.addSub(hybridSamplerInput)
+
+    return inputSpecification
+
   def __init__(self):
     """
     Default Constructor that will initialize member variables with reasonable
@@ -123,7 +162,8 @@ class DynamicEventTree(Grid):
     for hybridsampler in self.hybridStrategyToApply.values():
       preNeedDict = hybridsampler.whatDoINeed()
       for key,value in preNeedDict.items():
-        if key not in needDict.keys(): needDict[key] = []
+        if key not in needDict.keys():
+          needDict[key] = []
         needDict[key] = needDict[key] + value
     return needDict
 
@@ -135,11 +175,13 @@ class DynamicEventTree(Grid):
       @ Out, ready, bool, a boolean representing whether the caller is prepared for another input.
     """
     self._endJobRunnable = max((len(self.RunQueue['queue']),1))
-    if(len(self.RunQueue['queue']) != 0 or self.counter == 0): ready = True
+    if(len(self.RunQueue['queue']) != 0 or self.counter == 0):
+      ready = True
     else:
       if self.printEndXmlSummary:
         myFile = open(os.path.join(self.workingDir,self.name + "_outputSummary.xml"),'w')
-        for treeNode in self.TreeInfo.values(): treeNode.writeNodeTree(myFile)
+        for treeNode in self.TreeInfo.values():
+          treeNode.writeNodeTree(myFile)
         myFile.close()
       ready = False
     return ready
@@ -150,8 +192,10 @@ class DynamicEventTree(Grid):
       @ In, idj, string, the identifier of a job object
       @ Out, parentNode, TreeStructure.Node, the parent node of the job linked to idj
     """
-    if(idj == self.TreeInfo[self.rootToJob[idj]].getrootnode().name): parentNode = self.TreeInfo[self.rootToJob[idj]].getrootnode()
-    else: parentNode = list(self.TreeInfo[self.rootToJob[idj]].getrootnode().iter(idj))[0]
+    if(idj == self.TreeInfo[self.rootToJob[idj]].getrootnode().name):
+      parentNode = self.TreeInfo[self.rootToJob[idj]].getrootnode()
+    else:
+      parentNode = list(self.TreeInfo[self.rootToJob[idj]].getrootnode().iter(idj))[0]
     return parentNode
 
   def localFinalizeActualSampling(self,jobObject,model,myInput,genRunQueue=True):
@@ -167,7 +211,6 @@ class DynamicEventTree(Grid):
       @ Out, None
     """
     self.workingDir = model.workingDir
-
     # returnBranchInfo = self.__readBranchInfo(jobObject.output)
     # Get the parent element tree (xml object) to retrieve the information needed to create the new inputs
     parentNode = self._retrieveParentNode(jobObject.identifier)
@@ -178,7 +221,27 @@ class DynamicEventTree(Grid):
     # Read the branch info from the parent calculation (just ended calculation)
     # This function stores the information in the dictionary 'self.actualBranchInfo'
     # If no branch info, this history is concluded => return
-    if not self.__readBranchInfo(jobObject.output, jobObject.getWorkingDir()):
+
+    ## There are two ways to get at the working directory from the job instance
+    ## and both feel a bit hacky and fragile to changes in the Runner classes.
+    ## They are both listed below and the second inevitably stems from the first.
+    ## I am wondering if there is a reason we cannot use the model.workingDir
+    ## from above here? Granted the job instance should have a snapshot of
+    ## whatever the model's current working directory was for that evaluation,
+    ## and it could have changed in the meantime, so I will keep this as is for
+    ## now, but note this should be re-evaluated in the future. -- DPM 4/12/17
+    # codeModel = jobObject.args[0]
+    # jobWorkingDir = codeModel.workingDir
+    kwargs = jobObject.args[3]
+    stepWorkingDir = kwargs['WORKING_DIR']
+    jobWorkingDir = os.path.join(stepWorkingDir,kwargs['prefix'] if 'prefix' in kwargs.keys() else '1')
+
+    ## This appears to be the same, so I am switching to the model's workingDir
+    ## since it is more directly available and less change to how data is stored
+    ## in the args of a job instance. -- DPM 4/12/17
+    # jobWorkingDir = self.workingDir
+
+    if not self.__readBranchInfo(jobObject.getMetadata()['outfile'], jobWorkingDir):
       parentNode.add('completedHistory', True)
       return False
     # Collect the branch info in a multi-level dictionary
@@ -186,7 +249,7 @@ class DynamicEventTree(Grid):
     endInfo['branchChangedParams'] = self.actualBranchInfo[endInfo['branchDist']]
     # check if RELAP7 mode is activated, in case prepend the "<distribution>" string
     if any("<distribution>" in s for s in self.branchProbabilities.keys()):
-      endInfo['branchDist'] = self.toBeSampled.keys()[self.toBeSampled.values().index(endInfo['branchDist'])]
+      endInfo['branchDist'] = list(self.toBeSampled.keys())[list(self.toBeSampled.values()).index(endInfo['branchDist'])]
       #endInfo['branchDist'] = "<distribution>"+endInfo['branchDist']
     parentNode.add('actualEndTimeStep',self.actualEndTs)
     # # Get the parent element tree (xml object) to retrieve the information needed to create the new inputs
@@ -196,10 +259,10 @@ class DynamicEventTree(Grid):
     # get the branchedLevel dictionary
     branchedLevel = {}
     for distk, distpb in zip(endInfo['parentNode'].get('SampledVarsPb').keys(),endInfo['parentNode'].get('SampledVarsPb').values()):
-    #for distk, distpb in zip(endInfo['parentNode'].get('initiatorDistribution'),endInfo['parentNode'].get('PbThreshold')):
-      if distk not in self.epistemicVariables.keys(): branchedLevel[distk] = utils.index(self.branchProbabilities[distk],distpb)
-
-    if not branchedLevel: self.raiseAnError(RuntimeError,'branchedLevel of node '+jobObject.identifier+'not found!')
+      if distk not in self.epistemicVariables.keys():
+        branchedLevel[distk] = utils.index(self.branchProbabilities[distk],distpb)
+    if not branchedLevel:
+      self.raiseAnError(RuntimeError,'branchedLevel of node '+jobObject.identifier+'not found!')
     # Loop of the parameters that have been changed after a trigger gets activated
     for key in endInfo['branchChangedParams']:
       endInfo['n_branches'] = 1 + int(len(endInfo['branchChangedParams'][key]['actualValue']))
@@ -210,14 +273,20 @@ class DynamicEventTree(Grid):
         unchangedPb = 0.0
         try:
           # changed_pb = probability (not conditional probability yet) that the event A occurs and the final state is 'alpha' """
-          for pb in xrange(len(endInfo['branchChangedParams'][key]['associatedProbability'])): unchangedPb = unchangedPb + endInfo['branchChangedParams'][key]['associatedProbability'][pb]
-        except KeyError: self.raiseAWarning("KeyError:"+str(key))
-        if(unchangedPb <= 1): endInfo['branchChangedParams'][key]['unchangedPb'] = 1.0-unchangedPb
-        else: self.raiseAWarning("unchangedPb > 1:"+str(unchangedPb))
+          for pb in range(len(endInfo['branchChangedParams'][key]['associatedProbability'])):
+            unchangedPb = unchangedPb + endInfo['branchChangedParams'][key]['associatedProbability'][pb]
+        except KeyError:
+          self.raiseAWarning("KeyError:"+str(key))
+        if(unchangedPb <= 1):
+          endInfo['branchChangedParams'][key]['unchangedPb'] = 1.0-unchangedPb
+        else:
+          self.raiseAWarning("unchangedPb > 1:"+str(unchangedPb))
       else:
         # Two-Way mode => the resulting branches from this parent calculation (just ended) = 2
-        if branchedLevel[endInfo['branchDist']] > len(self.branchProbabilities[endInfo['branchDist']])-1: pb = 1.0
-        else: pb = self.branchProbabilities[endInfo['branchDist']][branchedLevel[endInfo['branchDist']]]
+        if branchedLevel[endInfo['branchDist']] > len(self.branchProbabilities[endInfo['branchDist']])-1:
+          pb = 1.0
+        else:
+          pb = self.branchProbabilities[endInfo['branchDist']][branchedLevel[endInfo['branchDist']]]
         endInfo['branchChangedParams'][key]['unchangedPb'] = 1.0 - pb
         endInfo['branchChangedParams'][key]['associatedProbability'] = [pb]
 
@@ -227,7 +296,8 @@ class DynamicEventTree(Grid):
     # endInfo['parentNode'].add('running',False)
     # endInfo['parentNode'].add('endTime',self.actualEndTime)
     # The branchedLevel counter is updated
-    if branchedLevel[endInfo['branchDist']] < len(self.branchProbabilities[endInfo['branchDist']]): branchedLevel[endInfo['branchDist']] += 1
+    if branchedLevel[endInfo['branchDist']] < len(self.branchProbabilities[endInfo['branchDist']]):
+      branchedLevel[endInfo['branchDist']] += 1
     # Append the parent branchedLevel (updated for the new branch/es) in the list tha contains them
     # (it is needed in order to avoid overlapping among info coming from different parent calculations)
     # When this info is used, they are popped out
@@ -239,8 +309,8 @@ class DynamicEventTree(Grid):
     # Compute conditional probability
     self.computeConditionalProbability()
     # Create the inputs and put them in the runQueue dictionary (if genRunQueue is true)
-    if genRunQueue: self._createRunningQueue(model,myInput)
-
+    if genRunQueue:
+      self._createRunningQueue(model,myInput)
     return True
 
   def computeConditionalProbability(self,index=None):
@@ -250,18 +320,22 @@ class DynamicEventTree(Grid):
       @ In, index, int, optional, position in the self.endInfo list (optional). Default = 0
       @ Out, None
     """
-    if not index: index = len(self.endInfo)-1
+    if not index:
+      index = len(self.endInfo)-1
     try:
       parentCondPb = self.endInfo[index]['parentNode'].get('conditionalPbr')
-      if not parentCondPb: parentCondPb = 1.0
-    except KeyError: parentCondPb = 1.0
+      if not parentCondPb:
+        parentCondPb = 1.0
+    except KeyError:
+      parentCondPb = 1.0
     # for all the branches the conditional pb is computed
     # unchangedConditionalPb = Conditional Probability of the branches in which the event has not occurred
     # changedConditionalPb   = Conditional Probability of the branches in which the event has occurred
     for key in self.endInfo[index]['branchChangedParams']:
       self.endInfo[index]['branchChangedParams'][key]['changedConditionalPb'] = []
       self.endInfo[index]['branchChangedParams'][key]['unchangedConditionalPb'] = parentCondPb*float(self.endInfo[index]['branchChangedParams'][key]['unchangedPb'])
-      for pb in range(len(self.endInfo[index]['branchChangedParams'][key]['associatedProbability'])): self.endInfo[index]['branchChangedParams'][key]['changedConditionalPb'].append(parentCondPb*float(self.endInfo[index]['branchChangedParams'][key]['associatedProbability'][pb]))
+      for pb in range(len(self.endInfo[index]['branchChangedParams'][key]['associatedProbability'])):
+        self.endInfo[index]['branchChangedParams'][key]['changedConditionalPb'].append(parentCondPb*float(self.endInfo[index]['branchChangedParams'][key]['associatedProbability'][pb]))
 
   def __readBranchInfo(self,outBase=None,currentWorkingDir=None):
     """
@@ -280,7 +354,9 @@ class DynamicEventTree(Grid):
     filename   = outBase + "_actual_branch_info.xml" if outBase else "actual_branch_info.xml"
     workingDir = currentWorkingDir if currentWorkingDir is not None else self.workingDir
 
-    if not os.path.isabs(filename): filename = os.path.join(workingDir,filename)
+    if not os.path.isabs(filename):
+      filename = os.path.join(workingDir,filename)
+
     if not os.path.exists(filename):
       self.raiseADebug('branch info file ' + os.path.basename(filename) +' has not been found. => No Branching.')
       return branchPresent
@@ -305,11 +381,13 @@ class DynamicEventTree(Grid):
             asPb = child.attrib['probability'].strip().split()
             self.actualBranchInfo[distName][child.text.strip()]['associatedProbability'] = []
             #self.actualBranchInfo[distName][child.text.strip()]['associatedProbability'].append(float(asPb))
-            for index in range(len(asPb)): self.actualBranchInfo[distName][child.text.strip()]['associatedProbability'].append(float(asPb[index]))
+            for index in range(len(asPb)):
+              self.actualBranchInfo[distName][child.text.strip()]['associatedProbability'].append(float(asPb[index]))
       # we exit the loop here, because only one trigger at the time can be handled  right now
       break
     # remove the file
-    if self.removeXmlBranchInfo: os.remove(filename)
+    if self.removeXmlBranchInfo:
+      os.remove(filename)
     branchPresent = True
     return branchPresent
 
@@ -332,8 +410,9 @@ class DynamicEventTree(Grid):
     rname       = rootnode.name
     rootnode.add('completedHistory', False)
     # Fill th values dictionary in
-    if precSampled: self.inputInfo['hybridsamplerCoordinate'  ] = copy.deepcopy(precSampled)
-    self.inputInfo['prefix'                    ] = rname.encode()
+    if precSampled:
+      self.inputInfo['hybridsamplerCoordinate'  ] = copy.deepcopy(precSampled)
+    self.inputInfo['prefix'                    ] = rname
     self.inputInfo['initiatorDistribution'     ] = []
     self.inputInfo['PbThreshold'               ] = []
     self.inputInfo['ValueThreshold'            ] = []
@@ -341,15 +420,19 @@ class DynamicEventTree(Grid):
     self.inputInfo['branchChangedParamValue'   ] = [b'None']
     self.inputInfo['startTime'                 ] = -sys.float_info.max
     self.inputInfo['endTimeStep'               ] = 0
-    self.inputInfo['parentID'                  ] = 'root'
+    self.inputInfo['RAVEN_parentID'            ] = "None"
+    self.inputInfo['RAVEN_isEnding'            ] = True
     self.inputInfo['conditionalPb'             ] = [1.0]
     self.inputInfo['conditionalPbr'            ] = 1.0
     self.inputInfo['happenedEvent'             ] = False
-    for key in self.branchProbabilities.keys():self.inputInfo['initiatorDistribution'].append(self.toBeSampled[key])
+    for key in self.branchProbabilities.keys():
+      self.inputInfo['initiatorDistribution'].append(self.toBeSampled[key])
     #for key in self.branchProbabilities.keys():self.inputInfo['initiatorDistribution'].append(key.encode())
-    for key in self.branchProbabilities.keys():self.inputInfo['PbThreshold'].append(self.branchProbabilities[key][branchedLevel[key]])
+    for key in self.branchProbabilities.keys():
+      self.inputInfo['PbThreshold'].append(self.branchProbabilities[key][branchedLevel[key]])
     #for key in self.branchProbabilities.keys():self.inputInfo['PbThreshold'].append(self.branchProbabilities[key][branchedLevel[key]])
-    for key in self.branchProbabilities.keys():self.inputInfo['ValueThreshold'].append(self.branchValues[key][branchedLevel[key]])
+    for key in self.branchProbabilities.keys():
+      self.inputInfo['ValueThreshold'].append(self.branchValues[key][branchedLevel[key]])
     #for key in self.branchProbabilities.keys():self.inputInfo['ValueThreshold'].append(self.branchValues[key][branchedLevel[key]])
     for varname in self.standardDETvariables:
       self.inputInfo['SampledVars'  ][varname] = self.branchValues[varname][branchedLevel[varname]]
@@ -365,14 +448,17 @@ class DynamicEventTree(Grid):
         self.inputInfo['SampledVarsPb'].update(precSample['SampledVarsPb'])
     self.inputInfo['PointProbability' ] = reduce(mul, self.inputInfo['SampledVarsPb'].values())
     self.inputInfo['ProbabilityWeight'] = self.inputInfo['PointProbability' ]
+    self.inputInfo.update({'ProbabilityWeight-'+key.strip():value for key,value in self.inputInfo['SampledVarsPb'].items()})
 
-    if(self.maxSimulTime): self.inputInfo['endTime'] = self.maxSimulTime
-    # Call the model function "createNewInput" with the "values" dictionary just filled.
+    if(self.maxSimulTime):
+      self.inputInfo['endTime'] = self.maxSimulTime
     # Add the new input path into the RunQueue system
-    newInputs = model.createNewInput(myInput,self.type,**self.inputInfo)
-    for key,value in self.inputInfo.items(): rootnode.add(key,value)
+    newInputs = {'args':[str(self.type)], 'kwargs':dict(self.inputInfo)}
+    for key,value in self.inputInfo.items():
+      rootnode.add(key,copy.copy(value))
     self.RunQueue['queue'].append(newInputs)
-    self.RunQueue['identifiers'].append(self.inputInfo['prefix'].encode())
+    print(self.inputInfo['prefix'])
+    self.RunQueue['identifiers'].append(self.inputInfo['prefix'])
     self.rootToJob[self.inputInfo['prefix']] = rname
     del newInputs
     self.counter += 1
@@ -393,7 +479,8 @@ class DynamicEventTree(Grid):
     # (this root name = the user defined sampler name)
     # Get the initial branchedLevel dictionary (=> the list gets empty)
     branchedLevel = self.branchedLevel.pop(0)
-    for rootTree in self.TreeInfo.values(): self._createRunningQueueBeginOne(rootTree,branchedLevel, model,myInput)
+    for rootTree in self.TreeInfo.values():
+      self._createRunningQueueBeginOne(rootTree,branchedLevel, model,myInput)
 
   def _createRunningQueueBranch(self,model,myInput,forceEvent=False):
     """
@@ -433,9 +520,8 @@ class DynamicEventTree(Grid):
       branchedLevel = copy.deepcopy(branchedLevelParent)
       # Get Parent node name => the branch name is creating appending to this name  a comma and self.branchCountOnLevel counter
       rname = endInfo['parentNode'].get('name') + '-' + str(self.branchCountOnLevel)
-
       # create a subgroup that will be appended to the parent element in the xml tree structure
-      subGroup = ETS.HierarchicalNode(self.messageHandler,rname.encode())
+      subGroup = ETS.HierarchicalNode(self.messageHandler,rname)
       subGroup.add('parent', endInfo['parentNode'].get('name'))
       subGroup.add('name', rname)
       subGroup.add('completedHistory', False)
@@ -486,7 +572,8 @@ class DynamicEventTree(Grid):
       # initialize the endTime to be equal to the start one... It will modified at the end of this branch
       subGroup.add('endTime', endInfo['parentNode'].get('endTime'))
       # add the branchedLevel dictionary to the subgroup
-      if self.branchCountOnLevel != 1: branchedLevel[endInfo['branchDist']] = branchedLevel[endInfo['branchDist']] - 1
+      if self.branchCountOnLevel != 1:
+        branchedLevel[endInfo['branchDist']] = branchedLevel[endInfo['branchDist']] - 1
       # branch calculation info... running, queue, etc are set here
       subGroup.add('runEnded',False)
       subGroup.add('running',False)
@@ -496,13 +583,15 @@ class DynamicEventTree(Grid):
       endInfo['parentNode'].appendBranch(subGroup)
       # Fill the values dictionary that will be passed into the model in order to create an input
       # In this dictionary the info for changing the original input is stored
-      self.inputInfo = {'prefix':rname.encode(),'endTimeStep':endInfo['endTimeStep'],
+      self.inputInfo = {'prefix':rname,'endTimeStep':endInfo['endTimeStep'],
                 'branchChangedParam':subGroup.get('branchChangedParam'),
                 'branchChangedParamValue':subGroup.get('branchChangedParamValue'),
                 'conditionalPb':subGroup.get('conditionalPbr'),
                 'startTime':endInfo['parentNode'].get('endTime'),
-                'parentID':subGroup.get('parent')}
+                'RAVEN_parentID':subGroup.get('parent'),
+                'RAVEN_isEnding':True}
 
+      #'RAVEN_parentID','RAVEN_isEnding'
       self.inputInfo['happenedEvent'] = subGroup.get('happenedEvent')
       # add additional edits if needed
       model.getAdditionalInputEdits(self.inputInfo)
@@ -530,7 +619,8 @@ class DynamicEventTree(Grid):
         self.inputInfo['ValueThreshold'        ] = []
       # Add the unbranched thresholds
       for key in self.branchProbabilities.keys():
-        if not (key in self.toBeSampled[endInfo['branchDist']]) and (branchedLevel[key] < len(self.branchProbabilities[key])): self.inputInfo['initiatorDistribution'].append(self.toBeSampled[key.encode()])
+        if not (key in self.toBeSampled[endInfo['branchDist']]) and (branchedLevel[key] < len(self.branchProbabilities[key])):
+          self.inputInfo['initiatorDistribution'].append(self.toBeSampled[key])
       for key in self.branchProbabilities.keys():
         if not (key in self.toBeSampled[endInfo['branchDist']]) and (branchedLevel[key] < len(self.branchProbabilities[key])):
           self.inputInfo['PbThreshold'   ].append(self.branchProbabilities[key][branchedLevel[key]])
@@ -549,11 +639,13 @@ class DynamicEventTree(Grid):
           self.inputInfo['SampledVarsPb'].update(precSample['SampledVarsPb'])
       self.inputInfo['PointProbability' ] = reduce(mul, self.inputInfo['SampledVarsPb'].values())*subGroup.get('conditionalPbr')
       self.inputInfo['ProbabilityWeight'] = self.inputInfo['PointProbability' ]
-      # Call the model function  "createNewInput" with the "values" dictionary just filled.
+      self.inputInfo.update({'ProbabilityWeight-'+key.strip():value for key,value in self.inputInfo['SampledVarsPb'].items()})
       # Add the new input path into the RunQueue system
-      self.RunQueue['queue'].append(model.createNewInput(myInput,self.type,**self.inputInfo))
+      newInputs = {'args': [str(self.type)], 'kwargs':dict(self.inputInfo)}
+      self.RunQueue['queue'].append(newInputs)
       self.RunQueue['identifiers'].append(self.inputInfo['prefix'])
-      for key,value in self.inputInfo.items(): subGroup.add(key,value)
+      for key,value in self.inputInfo.items():
+        subGroup.add(key,copy.copy(value))
       popped = endInfo.pop('parentNode')
       subGroup.add('endInfo',copy.deepcopy(endInfo))
       endInfo['parentNode'] = popped
@@ -599,6 +691,7 @@ class DynamicEventTree(Grid):
         subElm.add('runEnded',False)
         subElm.add('running',True)
         subElm.add('queue',False)
+
     return jobInput
 
   def generateInput(self,model,oldInput):
@@ -632,8 +725,14 @@ class DynamicEventTree(Grid):
     # retrieve the input from the queue
     newerInput = self.__getQueueElement()
     # If no inputs are present in the queue => a branch is finished
-    if not newerInput: self.raiseADebug('A Branch ended!')
-    return newerInput
+    if not newerInput:
+      self.raiseADebug('A Branch ended!')
+
+    ## It turns out the "newerInput" contains all of the information that should
+    ## be in inputInfo (which should actually be returned and not stored in the
+    ## sampler object, but all samplers do this for now) -- DPM 4/26/17
+    self.inputInfo = newerInput['kwargs']
+    return myInput
 
   def _generateDistributions(self,availableDist,availableFunc):
     """
@@ -645,30 +744,38 @@ class DynamicEventTree(Grid):
       @ Out, None
     """
     Grid._generateDistributions(self,availableDist,availableFunc)
-    for hybridsampler in self.hybridStrategyToApply.values(): hybridsampler._generateDistributions(availableDist,availableFunc)
+    for hybridsampler in self.hybridStrategyToApply.values():
+      hybridsampler._generateDistributions(availableDist,availableFunc)
 
-  def localInputAndChecks(self,xmlNode):
+  def localInputAndChecks(self,xmlNode, paramInput):
     """
       Class specific xml inputs will be read here and checked for validity.
       @ In, xmlNode, xml.etree.ElementTree.Element, The xml element node that will be checked against the available options specific to this Sampler.
+      @ In, paramInput, InputData.ParameterInput, the parsed parameters
       @ Out, None
     """
-    self._localInputAndChecksDET(xmlNode)
-    self._localInputAndChecksHybrid(xmlNode)
+    #TODO remove using xmlNode
+    self._localInputAndChecksDET(xmlNode, paramInput)
+    self._localInputAndChecksHybrid(xmlNode, paramInput)
 
-  def _localInputAndChecksDET(self,xmlNode):
+  def _localInputAndChecksDET(self,xmlNode, paramInput):
     """
       Class specific inputs will be read here and checked for validity.
       This method reads the standard DET portion only (no hybrid)
       @ In, xmlNode, xml.etree.ElementTree.Element, The xml element node that will be checked against the available options specific to this Sampler.
+      @ In, paramInput, InputData.ParameterInput, the parsed parameters
       @ Out, None
     """
-    Grid.localInputAndChecks(self,xmlNode)
-    if 'printEndXmlSummary'  in xmlNode.attrib.keys(): self.printEndXmlSummary  = xmlNode.attrib['printEndXmlSummary'].lower()  in utils.stringsThatMeanTrue()
-    if 'removeXmlBranchInfo' in xmlNode.attrib.keys(): self.removeXmlBranchInfo = xmlNode.attrib['removeXmlBranchInfo'].lower() in utils.stringsThatMeanTrue()
+    Grid.localInputAndChecks(self,xmlNode, paramInput)
+    if 'printEndXmlSummary'  in xmlNode.attrib.keys():
+      self.printEndXmlSummary  = xmlNode.attrib['printEndXmlSummary'].lower()  in utils.stringsThatMeanTrue()
+    if 'removeXmlBranchInfo' in xmlNode.attrib.keys():
+      self.removeXmlBranchInfo = xmlNode.attrib['removeXmlBranchInfo'].lower() in utils.stringsThatMeanTrue()
     if 'maxSimulationTime'   in xmlNode.attrib.keys():
-      try                        : self.maxSimulTime = float(xmlNode.attrib['maxSimulationTime'])
-      except (KeyError,NameError): self.raiseAnError(IOError,'Can not convert maxSimulationTime in float number!!!')
+      try:
+        self.maxSimulTime = float(xmlNode.attrib['maxSimulationTime'])
+      except (KeyError,NameError):
+        self.raiseAnError(IOError,'Can not convert maxSimulationTime in float number!!!')
     branchedLevel, error_found = {}, False
     gridInfo   = self.gridEntity.returnParameter("gridInfo")
     errorFound = False
@@ -721,29 +828,37 @@ class DynamicEventTree(Grid):
       if len(list(set(associatedDists))) != len(associatedDists):
         errorMsgs += "Distribution-mode sampling activated in " + self.name+". In this case every <distribution> needs to be assocaited with one single <Distribution> block!\n"
         errorFound = True
-    if errorFound: self.raiseAnError(IOError,"In sampler named " + self.name+' the following errors have been found: \n'+errorMsgs )
+    if errorFound:
+      self.raiseAnError(IOError,"In sampler named " + self.name+' the following errors have been found: \n'+errorMsgs )
     # Append the branchedLevel dictionary in the proper list
     self.branchedLevel.append(branchedLevel)
 
-  def _localInputAndChecksHybrid(self,xmlNode):
+  def _localInputAndChecksHybrid(self,xmlNode, paramInput):
     """
       Class specific inputs will be read here and checked for validity.
       This method reads the hybrid det portion only
       @ In, xmlNode, xml.etree.ElementTree.Element, The xml element node that will be checked against the available options specific to this Sampler.
+      @ In, paramInput, InputData.ParameterInput, the parsed parameters
       @ Out, None
     """
     for child in xmlNode:
       if child.tag == 'HybridSampler':
-        if not 'type' in child.attrib.keys()                          : self.raiseAnError(IOError,'Not found attribute type in hybridsamplerSampler block!')
-        if child.attrib['type'] in self.hybridStrategyToApply.keys()  : self.raiseAnError(IOError,'Hybrid Sampler type '+child.attrib['type'] + ' already inputted!')
-        if child.attrib['type'] not in self.hybridSamplersAvail.keys(): self.raiseAnError(IOError,'Hybrid Sampler type ' +child.attrib['type'] + ' unknown. Available are '+ ','.join(self.hybridSamplersAvail.keys()) + '!')
+        if not 'type' in child.attrib.keys():
+          self.raiseAnError(IOError,'Not found attribute type in hybridsamplerSampler block!')
+        if child.attrib['type'] in self.hybridStrategyToApply.keys():
+          self.raiseAnError(IOError,'Hybrid Sampler type '+child.attrib['type'] + ' already inputted!')
+        if child.attrib['type'] not in self.hybridSamplersAvail.keys():
+          self.raiseAnError(IOError,'Hybrid Sampler type ' +child.attrib['type'] + ' unknown. Available are '+ ','.join(self.hybridSamplersAvail.keys()) + '!')
         self.hybridNumberSamplers = 1
         # the user can decided how to sample the epistemic
         self.hybridStrategyToApply[child.attrib['type']] = self.hybridSamplersAvail[child.attrib['type']]()
         # give the hybridsampler sampler the message handler
         self.hybridStrategyToApply[child.attrib['type']].setMessageHandler(self.messageHandler)
         # make the hybridsampler sampler read  its own xml block
-        self.hybridStrategyToApply[child.attrib['type']]._readMoreXML(child)
+        childCopy = copy.deepcopy(child)
+        childCopy.tag = child.attrib['type']
+        childCopy.attrib.pop('type')
+        self.hybridStrategyToApply[child.attrib['type']]._readMoreXML(childCopy)
         # store the variables that represent the epistemic space
         self.epistemicVariables.update(dict.fromkeys(self.hybridStrategyToApply[child.attrib['type']].toBeSampled.keys(),{}))
 
@@ -783,7 +898,8 @@ class DynamicEventTree(Grid):
       @ In, None
       @ Out, None
     """
-    if len(self.hybridStrategyToApply.keys()) > 0: hybridlistoflist = []
+    if len(self.hybridStrategyToApply.keys()) > 0:
+      hybridlistoflist = []
     for cnt, preckey  in enumerate(self.hybridStrategyToApply.keys()):
       hybridsampler =  self.hybridStrategyToApply[preckey]
       hybridlistoflist.append([])
@@ -798,7 +914,8 @@ class DynamicEventTree(Grid):
       self.raiseAMessage('Number of Hybrid Samples are ' + str(self.hybridNumberSamplers) + '!')
       hybridNumber = self.hybridNumberSamplers
       combinations = list(itertools.product(*hybridlistoflist))
-    else: hybridNumber = 1
+    else:
+      hybridNumber = 1
     self.TreeInfo = {}
     for precSample in range(hybridNumber):
       elm = ETS.HierarchicalNode(self.messageHandler,self.name + '_' + str(precSample+1))
@@ -814,7 +931,8 @@ class DynamicEventTree(Grid):
       if self.hybridNumberSamplers > 0:
         elm.add('hybridsamplerCoordinate', combinations[precSample])
         for point in combinations[precSample]:
-          for epistVar, val in point['SampledVars'].items(): self.epistemicVariables[epistVar][elm.get('name')] = val
+          for epistVar, val in point['SampledVars'].items():
+            self.epistemicVariables[epistVar][elm.get('name')] = val
       # The dictionary branchedLevel is stored in the xml tree too. That's because
       # the advancement of the thresholds must follow the tree structure
       elm.add('branchedLevel', self.branchedLevel[0])
@@ -831,3 +949,5 @@ class DynamicEventTree(Grid):
       #self.branchProbabilities[key] = [self.distDict[self.toBeSampled.keys()[self.toBeSampled.values().index(key)]].cdf(float(self.branchValues[key][index])) for index in range(len(self.branchValues[key]))]
       self.branchProbabilities[key] = [self.distDict[key].cdf(float(self.branchValues[key][index])) for index in range(len(self.branchValues[key]))]
     self.limit = sys.maxsize
+    # add expected metadata
+    self.addMetaKeys(['RAVEN_parentID','RAVEN_isEnding'])

@@ -22,7 +22,6 @@ update_python_path ()
 update_python_path
 PATH=$INSTALL_DIR/bin:$PATH
 
-
 if which coverage
 then
     echo coverage already available, skipping building it.
@@ -35,7 +34,8 @@ else
     fi
 
     cd $BUILD_DIR
-    $DOWNLOADER https://pypi.python.org/packages/source/c/coverage/coverage-3.7.1.tar.gz #md5=67d4e393f4c6a5ffc18605409d2aa1ac
+    #SHA256=56e448f051a201c5ebbaa86a5efd0ca90d327204d8b059ab25ad0f35fbfd79f1
+    $DOWNLOADER https://files.pythonhosted.org/packages/35/fe/e7df7289d717426093c68d156e0fd9117c8f4872b6588e8a8928a0f68424/coverage-4.5.1.tar.gz
     tar -xvzf coverage-3.7.1.tar.gz
     cd coverage-3.7.1
     (unset CC CXX; $PYTHON_CMD setup.py install --prefix=$INSTALL_DIR)
@@ -45,26 +45,50 @@ update_python_path
 
 cd $SCRIPT_DIR
 
-cd tests/framework
 #coverage help run
-FRAMEWORK_DIR=`(cd ../../framework && pwd)`
+FRAMEWORK_DIR=`(cd framework && pwd)`
 
-EXTRA="--rcfile=.coveragerc --source=$FRAMEWORK_DIR -a --omit=$FRAMEWORK_DIR/contrib/*"
+source $SCRIPT_DIR/scripts/establish_conda_env.sh --quiet --load
+# get display var
+DISPLAY_VAR=`(echo $DISPLAY)`
+# reset it
+export DISPLAY=
+
+EXTRA="--rcfile=$FRAMEWORK_DIR/../tests/framework/.coveragerc --source=$FRAMEWORK_DIR --parallel-mode --omit=$FRAMEWORK_DIR/contrib/*"
 export COVERAGE_FILE=`pwd`/.coverage
 
 coverage erase
-#skip test_rom_trainer.xml
-DRIVER=$FRAMEWORK_DIR/Driver.py
-for I in $(python ${SCRIPT_DIR}/developer_tools/get_coverage_tests.py)
-do
-    #DIR=`dirname $I`
-    #BASE=`basename $I`
-    #echo Running $DIR $BASE
-    #(cd $DIR && coverage run $EXTRA $DRIVER $BASE)
-    echo coverage run $EXTRA $DRIVER $I
-    coverage run $EXTRA $DRIVER $I
-done
-coverage run $EXTRA ../../framework/TestDistributions.py
-coverage run $EXTRA ../../framework/Driver.py test_relap5_code_interface.xml interfacecheck
+($FRAMEWORK_DIR/../run_tests "$@" --python-command="coverage run $EXTRA " || echo run_test done but some tests failed)
+
+#get DISPLAY BACK
+DISPLAY=$DISPLAY_VAR
+
+if which Xvfb
+then
+    Xvfb :8888 &
+    xvfbPID=$!
+    oldDisplay=$DISPLAY
+    export DISPLAY=:8888
+    cd $FRAMEWORK_DIR/../tests/framework/PostProcessors/TopologicalPostProcessor
+    coverage run $EXTRA $FRAMEWORK_DIR/Driver.py test_topology_ui.xml interactiveCheck || true
+    cd $FRAMEWORK_DIR/../tests/framework/PostProcessors/DataMiningPostProcessor/Clustering/
+    coverage run $EXTRA $FRAMEWORK_DIR/Driver.py hierarchical_ui.xml interactiveCheck || true
+    kill -9 $xvfbPID || true
+    export DISPLAY=$oldDisplay
+else
+    ## Try these tests anyway, we can get some coverage out of them even if the
+    ## UI fails or is unavailable.
+    cd $FRAMEWORK_DIR/../tests/framework/PostProcessors/TopologicalPostProcessor
+    coverage run $EXTRA $FRAMEWORK_DIR/Driver.py test_topology_ui.xml interactiveCheck || true
+    cd $FRAMEWORK_DIR/../tests/framework/PostProcessors/DataMiningPostProcessor/Clustering/
+    coverage run $EXTRA $FRAMEWORK_DIR/Driver.py hierarchical_ui.xml interactiveCheck || true
+fi
+
+## Go to the final directory and generate the html documents
+cd $SCRIPT_DIR/tests/
+pwd
+rm -f .cov_dirs
+for FILE in `find . -name '.coverage.*'`; do dirname $FILE; done | sort | uniq > .cov_dirs
+coverage combine `cat .cov_dirs`
 coverage html
 

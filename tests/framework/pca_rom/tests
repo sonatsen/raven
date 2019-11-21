@@ -2,7 +2,7 @@
  [./inputPCAReduction]
   type = 'RavenFramework'
   input = 'test_input_pca.xml'
-  xml = 'PCAReduction/testPrintPointSet_dump.xml'
+  UnorderedXml = 'PCAReduction/testPrintPointSet_dump.xml'
   csv = 'PCAReduction/testPrintPointSet_dump.csv'
   remove_unicode_identifier = true
  [../]
@@ -10,30 +10,27 @@
  [./MVNAbs]
   type = 'RavenFramework'
   input = 'test_MVN_abs.xml'
-  output = 'MVNAbs/testPrintPointSetAbs_dump.csv MVNAbs/testPrintPointSetAbs_dump.csv'
-  csv = 'MVNAbs/testPrintPointSetAbs_dump.csv MVNAbs/testPrintPointSetAbs_dump.csv'
-  xml = 'MVNAbs/testPrintPointSetAbs_dump.xml MVNAbs/testPrintPointSetAbs_dump.xml'
+  csv = 'MVNAbs/testPrintPointSetAbs_dump.csv'
+  UnorderedXml = 'MVNAbs/testPrintPointSetAbs_dump.xml'
  [../]
 
  [./MVNRel]
   type = 'RavenFramework'
   input = 'test_MVN_rel.xml'
-  output = 'MVNRel/testPrintPointSetRel_dump.csv MVNRel/testPrintPointSetRel_dump.csv'
-  csv = 'MVNRel/testPrintPointSetRel_dump.csv MVNRel/testPrintPointSetRel_dump.csv'
-  xml = 'MVNRel/testPrintPointSetRel_dump.xml MVNRel/testPrintPointSetRel_dump.xml'
+  csv = 'MVNRel/testPrintPointSetRel_dump.csv'
+  UnorderedXml = 'MVNRel/testPrintPointSetRel_dump.xml'
  [../]
 
  [./ROM]
   type = 'RavenFramework'
   input = 'test_rom.xml'
-  output = 'ROM/testPrintPointSet_dump.csv ROM/testPrintPointSet_dump.csv'
-  csv = 'ROM/testPrintPointSet_dump.csv ROM/testPrintPointSet_dump.csv'
+  csv = 'ROM/testPrintPointSet_dump.csv'
  [../]
 
  [./oneDim]
   type = 'RavenFramework'
   input = 'test_one_dim_pca.xml'
-  xml = 'oneDimPCA/testPrintPointSet_dump.xml'
+  UnorderedXml = 'oneDimPCA/testPrintPointSet_dump.xml'
   csv = 'oneDimPCA/testPrintPointSet_dump.csv'
   remove_unicode_identifier = true
  [../]

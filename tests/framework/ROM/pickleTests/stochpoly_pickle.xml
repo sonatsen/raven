@@ -61,13 +61,7 @@
       <Interpolation poly="Legendre" quad="Legendre" weight="1">x1</Interpolation>
       <Interpolation poly="Legendre" quad="Legendre" weight="1">x2</Interpolation>
     </ROM>
-    <ROM name="pROM" subType="GaussPolynomialRom">
-      <Target>ans</Target>
-      <Features>x1,x2</Features>
-      <IndexSet>TensorProduct</IndexSet>
-      <PolynomialOrder>2</PolynomialOrder>
-      <Interpolation poly="Legendre" quad="Legendre" weight="1">x1</Interpolation>
-      <Interpolation poly="Legendre" quad="Legendre" weight="1">x2</Interpolation>
+    <ROM name="pROM" subType="pickledROM">
     </ROM>
   </Models>
 
@@ -133,10 +127,12 @@
     <Print name="Udump">
       <type>csv</type>
       <source>Usolns</source>
+      <what>input,output</what>
     </Print>
     <Print name="pdump">
       <type>csv</type>
       <source>psolns</source>
+      <what>input,output</what>
     </Print>
   </OutStreams>
 

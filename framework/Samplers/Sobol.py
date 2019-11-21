@@ -22,7 +22,6 @@
 from __future__ import division, print_function, unicode_literals, absolute_import
 import warnings
 warnings.simplefilter('default',DeprecationWarning)
-#if not 'xrange' in dir(__builtins__): xrange = range
 #End compatibility block for Python 3----------------------------------------------------------------
 
 #External Modules------------------------------------------------------------------------------------
@@ -93,7 +92,8 @@ class Sobol(SparseGridCollocation):
     self.jobHandler = initDict['internal']['jobHandler']
     self.dists = self.transformDistDict()
     for dist in self.dists.values():
-      if isinstance(dist,Distributions.NDimensionalDistributions): self.raiseAnError(IOError,'ND Distributions containing the variables in the original input space are  not supported for this sampler!')
+      if isinstance(dist,Distributions.NDimensionalDistributions):
+        self.raiseAnError(IOError,'ND Distributions containing the variables in the original input space are  not supported for this sampler!')
 
   def localInitialize(self):
     """
@@ -152,15 +152,18 @@ class Sobol(SparseGridCollocation):
     self.pointsToRun.append(tuple(newpt))
     self.distinctPoints.add(tuple(newpt))
     #now do the rest
-    for combo,rom in self.ROMs.items(): # just for each combo
+    for combo,rom in sorted(self.ROMs.items()):
+      # just for each combo
       SG = rom.sparseGrid #they all should have the same sparseGrid
       SG._remap(combo)
       for l in range(len(SG)):
         pt,wt = SG[l]
         newpt = np.zeros(len(self.features))
         for v,var in enumerate(self.features):
-          if var in combo: newpt[v] = pt[combo.index(var)]
-          else: newpt[v] = self.references[var]
+          if var in combo:
+            newpt[v] = pt[combo.index(var)]
+          else:
+            newpt[v] = self.references[var]
         newpt=tuple(newpt)
         self.distinctPoints.add(newpt)
         if newpt not in self.pointsToRun:
@@ -184,7 +187,8 @@ class Sobol(SparseGridCollocation):
       @ In, myInput, list, a list of the original needed inputs for the model (e.g. list of files, etc.)
       @ Out, None
     """
-    try: pt = self.pointsToRun[self.counter-1]
+    try:
+      pt = self.pointsToRun[self.counter-1]
     except IndexError:
       self.raiseADebug('All sparse grids are complete!  Moving on...')
       raise utils.NoMoreSamplesNeeded
@@ -194,7 +198,7 @@ class Sobol(SparseGridCollocation):
         for key in varName.strip().split(','):
           self.values[key] = pt[v]
         self.inputInfo['SampledVarsPb'][varName] = self.distDict[varName].pdf(pt[v])
-        self.inputInfo['ProbabilityWeight-'+varName.replace(",","-")] = self.inputInfo['SampledVarsPb'][varName]
+        self.inputInfo['ProbabilityWeight-'+varName] = self.inputInfo['SampledVarsPb'][varName]
       # compute the SampledVarsPb for N-D distribution
       elif self.variables2distributionsMapping[varName]['totDim'] > 1 and self.variables2distributionsMapping[varName]['reducedDim'] == 1:
         dist = self.variables2distributionsMapping[varName]['name']
@@ -215,7 +219,8 @@ class Sobol(SparseGridCollocation):
           for key in var.strip().split(','):
             self.values[key] = pt[location]
         self.inputInfo['SampledVarsPb'][varName] = self.distDict[varName].pdf(ndCoordinates)
-        self.inputInfo['ProbabilityWeight-'+varName.replace(",","!")] = self.inputInfo['SampledVarsPb'][varName]
-
+        self.inputInfo['ProbabilityWeight-'+dist] = self.inputInfo['SampledVarsPb'][varName]
     self.inputInfo['PointProbability'] = reduce(mul,self.inputInfo['SampledVarsPb'].values())
+    self.inputInfo['ProbabilityWeight'] = np.atleast_1d(1.0) # weight has no meaning for sobol
     self.inputInfo['SamplerType'] = 'Sparse Grids for Sobol'
+

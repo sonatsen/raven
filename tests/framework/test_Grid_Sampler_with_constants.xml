@@ -7,8 +7,15 @@
     <classesTested>Sampler.Grid</classesTested>
     <description>
        This test is aimed to check the capability of RAVEN to input constant variables values. This
-       test is valid to demonstrate this capability for any Sampler in RAVEN.
+       test is valid to demonstrate this capability for any Sampler in RAVEN. In addition, it shows how
+       the constant variables can be used in conjunction with a function.
     </description>
+    <revisions>
+      <revision author="alfoa" date="2017-04-24">
+        added a function to show how the constant variables can be used in conjunction with a function
+      </revision>
+      <revision author="alfoa" date="2019-03-07">Modified syntax in Functions as for issue #934</revision>
+    </revisions>
   </TestInfo>
 
   <RunInfo>
@@ -56,8 +63,11 @@
         <grid construction="equal" steps="1" type="value">3.5 4.0</grid>
       </variable>
       <variable name="TestOnePoint">
-          <distribution>DistTri1</distribution>
-          <grid construction="custom" type="CDF">0.5</grid>
+        <distribution>DistTri1</distribution>
+        <grid construction="custom" type="CDF">0.5</grid>
+      </variable>
+      <variable name="multiplyTheConstantByTwo">
+        <function>multiply_the_constant</function>
       </variable>
       <constant name="aConstant"> 20021986 </constant>
     </Grid>
@@ -65,11 +75,11 @@
 
   <DataObjects>
     <PointSet name="outGrid">
-      <Input>VarGauss1,VarGauss2,VarTri1,aConstant</Input>
+      <Input>VarGauss1,VarGauss2,VarTri1,aConstant,multiplyTheConstantByTwo</Input>
       <Output>OutputPlaceHolder</Output>
     </PointSet>
     <PointSet name="dummyIN">
-      <Input>VarGauss1,VarGauss2,VarTri1,aConstant</Input>
+      <Input>VarGauss1,VarGauss2,VarTri1,aConstant,multiplyTheConstantByTwo</Input>
       <Output>OutputPlaceHolder</Output>
     </PointSet>
   </DataObjects>
@@ -78,6 +88,7 @@
     <Print name="outGrid_dump">
       <type>csv</type>
       <source>outGrid</source>
+      <what>input,output</what>
     </Print>
   </OutStreams>
 
@@ -95,5 +106,11 @@
   <Databases>
     <HDF5 name="test_DummyModel_db" readMode="overwrite"/>
   </Databases>
+
+  <Functions>
+    <External file="multiply_the_constant.py" name="multiply_the_constant">
+      <variables>aConstant,TestOnePoint</variables>
+    </External>
+  </Functions>
 
 </Simulation>

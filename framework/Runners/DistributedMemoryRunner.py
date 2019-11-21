@@ -20,8 +20,6 @@ Created on Mar 5, 2013
 from __future__ import division, print_function, unicode_literals, absolute_import
 import warnings
 warnings.simplefilter('default',DeprecationWarning)
-if not 'xrange' in dir(__builtins__):
-  xrange = range
 #End compatibility block for Python 3----------------------------------------------------------------
 
 #External Modules------------------------------------------------------------------------------------
@@ -44,14 +42,18 @@ class DistributedMemoryRunner(InternalRunner):
     Class for running internal objects in distributed memory fashion using
     ppserver
   """
-  def __init__(self, messageHandler, ppserver, Input, functionToRun, frameworkModules = [], identifier=None, metadata=None, functionToSkip = None, uniqueHandler = "any"):
+  def __init__(self, messageHandler, ppserver, args, functionToRun,
+                     frameworkModules = [], identifier=None, metadata=None,
+                     functionToSkip = None, uniqueHandler = "any",
+                     profile = False):
     """
       Init method
       @ In, messageHandler, MessageHandler object, the global RAVEN message
         handler object
       @ In, ppserver, ppserver, instance of the ppserver object
-      @ In, Input, list, list of inputs that are going to be passed to the
-        function as *args
+      @ In, args, dict, this is a list of arguments that will be passed as
+        function parameters into whatever method is stored in functionToRun.
+        e.g., functionToRun(*args)
       @ In, functionToRun, method or function, function that needs to be run
       @ In, frameworkModules, list, optional, list of modules that need to be
         imported for internal parallelization (parallel python). This list
@@ -67,18 +69,21 @@ class DistributedMemoryRunner(InternalRunner):
         this runner. For example, if present, to retrieve this runner using the
         method jobHandler.getFinished, the uniqueHandler needs to be provided.
         If uniqueHandler == 'any', every "client" can get this runner
+      @ In, profile, bool, optional, if True then timing statements are printed
+        during deconstruction.
       @ Out, None
     """
 
     ## First, allow the base class to handle the commonalities
     ##   We keep the command here, in order to have the hook for running exec
     ##   code into internal models
-    super(DistributedMemoryRunner, self).__init__(messageHandler, Input, functionToRun, identifier, metadata, uniqueHandler)
+    super(DistributedMemoryRunner, self).__init__(messageHandler, args, functionToRun, identifier, metadata, uniqueHandler,profile)
 
     ## Just in case, remove duplicates before storing to save on computation
     ## later
     self.frameworkMods  = utils.removeDuplicates(frameworkModules)
     self.functionToSkip = utils.removeDuplicates(functionToSkip)
+    self.args = args
 
     ## Other parameters passed at initialization
     self.__ppserver = ppserver
@@ -119,12 +124,14 @@ class DistributedMemoryRunner(InternalRunner):
       @ Out, None
     """
     try:
-      if len(self.input) == 1:
-        self.thread = self.__ppserver.submit(self.functionToRun, args= (self.input[0],), depfuncs=(), modules = tuple(list(set(self.frameworkMods))),functionToSkip=self.functionToSkip)
-      else:
-        self.thread = self.__ppserver.submit(self.functionToRun, args= self.input, depfuncs=(), modules = tuple(list(set(self.frameworkMods))),functionToSkip=self.functionToSkip)
+      self.thread = self.__ppserver.submit(self.functionToRun, args=self.args, depfuncs=(), modules = tuple(list(set(self.frameworkMods))),functionToSkip=self.functionToSkip)
+      self.trackTime('runner_started')
       self.started = True
     except Exception as ae:
+      #Uncomment if you need the traceback
+      #exc_type, exc_value, exc_traceback = sys.exc_info()
+      #import traceback
+      #traceback.print_exception(exc_type, exc_value, exc_traceback)
       self.raiseAWarning(self.__class__.__name__ + " job "+self.identifier+" failed with error:"+ str(ae) +" !",'ExceptedError')
       self.returnCode = -1
 
@@ -134,5 +141,8 @@ class DistributedMemoryRunner(InternalRunner):
       @ In, None
       @ Out, None
     """
-    self.raiseAWarning("Terminating " + self.thread.tid + " Identifier " + self.identifier)
-    os.kill(self.thread.tid, signal.SIGTERM)
+    self.thread.stop()
+    del self.thread
+    self.thread = None
+    self.returnCode = -1
+    self.trackTime('runner_killed')

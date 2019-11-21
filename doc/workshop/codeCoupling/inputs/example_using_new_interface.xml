@@ -1,0 +1,102 @@
+<?xml version="1.0" ?>
+<Simulation verbosity="all">
+  <TestInfo>
+    <name>doc/workshop/codeCoupling/input.batemanInterface</name>
+    <author>wangc</author>
+    <created>2018-09-21</created>
+    <classesTested>Models.Code</classesTested>
+    <description>Workshop test: test code coupling with Projectile model using bateman code interface</description>
+  </TestInfo>
+
+  <RunInfo>
+    <WorkingDir>exampleTestInterface</WorkingDir>
+    <Sequence>runGrid,outputResults</Sequence>
+    <batchSize>4</batchSize>
+  </RunInfo>
+
+  <Files>
+    <Input name="originalInput" type="">../../../ExternalModels/input.i</Input>
+  </Files>
+
+  <Models>
+    <Code name="myWorkshopCode" subType="Projectile">
+      <executable>../../ExternalModels/projectile.py</executable>
+    </Code>
+  </Models>
+
+  <Distributions>
+    <Uniform name="vel_dist">
+      <lowerBound>1</lowerBound>
+      <upperBound>60</upperBound>
+    </Uniform>
+    <Uniform name="angle_dist">
+      <lowerBound>5</lowerBound>
+      <upperBound>85</upperBound>
+    </Uniform>
+  </Distributions>
+
+  <Samplers>
+    <Grid name="myGrid">
+      <variable name="v0">
+        <distribution>vel_dist</distribution>
+        <grid construction="equal" steps="4" type="CDF">0.1 0.8</grid>
+      </variable>
+      <variable name="angle">
+        <distribution>angle_dist</distribution>
+        <grid construction="equal" steps="4" type="CDF">0.1 0.8</grid>
+      </variable>
+      <constant name="x0">0</constant>
+      <constant name="y0">0</constant>
+      <constant name="timeOption">1</constant>
+    </Grid>
+  </Samplers>
+
+  <Steps>
+    <MultiRun name="runGrid">
+      <Input class="Files" type="">originalInput</Input>
+      <Model class="Models" type="Code">myWorkshopCode</Model>
+      <Sampler class="Samplers" type="Grid">myGrid</Sampler>
+      <Output class="DataObjects" type="PointSet">results</Output>
+    </MultiRun>
+    <IOStep name="outputResults">
+      <Input class="DataObjects" type="PointSet">results</Input>
+      <Output class="OutStreams" type="Print">to_file</Output>
+      <Output class="OutStreams" type="Plot">to_plot</Output>
+    </IOStep>
+  </Steps>
+
+  <OutStreams>
+    <Print name="to_file">
+      <type>csv</type>
+      <source>results</source>
+    </Print>
+    <Plot name="to_plot">
+        <plotSettings>
+            <plot>
+                <type>scatter</type>
+                <x>results|Input|v0</x>
+                <y>results|Input|angle</y>
+                <z>results|Output|r</z>
+                <colorMap>results|Output|t</colorMap>
+            </plot>
+            <xlabel>v0</xlabel>
+            <ylabel>angle</ylabel>
+            <zlabel>r</zlabel>
+        </plotSettings>
+        <actions>
+            <how>png</how>
+        </actions>
+    </Plot>
+  </OutStreams>
+
+  <DataObjects>
+    <PointSet name="placeholder">
+      <Input>v0,angle</Input>
+    </PointSet>
+    <PointSet name="results">
+      <Input>v0,angle</Input>
+      <Output>r,t</Output>
+    </PointSet>
+  </DataObjects>
+
+</Simulation>

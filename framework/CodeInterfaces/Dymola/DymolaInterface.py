@@ -117,6 +117,21 @@ class Dymola(CodeInterfaceBase):
       @ In, None
       @ Out, None
     """
+    CodeInterfaceBase.__init__(self)
+    self.variablesToLoad = [] # the variables that should be loaded from the mat file (by default, all of them)
+
+  def _readMoreXML(self,xmlNode):
+    """
+      Function to read the portion of the xml input that belongs to this specialized class and initialize
+      some members based on inputs. This can be overloaded in specialize code interface in order to
+      read specific flags.
+      Only one option is possible. You can choose here, if multi-deck mode is activated, from which deck you want to load the results
+      @ In, xmlNode, xml.etree.ElementTree.Element, Xml element node
+      @ Out, None.
+    """
+    child = xmlNode.find("outputVariablesToLoad")
+    if child is not None:
+      self.variablesToLoad = [var.strip() for var in child.text.split()]
 
   #  Generate the command to run Dymola. The form of the command is:
   #
@@ -129,7 +144,7 @@ class Dymola(CodeInterfaceBase):
   #                          generated as part of the model build process, which is called dsin.txt.
   #     <outputfile>     The simulation output, which is .mat file.
 
-  def generateCommand(self, inputFiles, executable, clargs=None, fargs=None):
+  def generateCommand(self, inputFiles, executable, clargs=None, fargs=None, preExec=None):
     """
       See base class.  Collects all the clargs and the executable to produce the command-line call.
       Returns tuple of commands and base file name for run.
@@ -138,6 +153,7 @@ class Dymola(CodeInterfaceBase):
       @ In, executable, string, executable name with absolute path (e.g. /home/path_to_executable/code.exe)
       @ In, clargs, dict, optional, dictionary containing the command-line flags the user can specify in the input (e.g. under the node < Code >< clargstype =0 input0arg =0 i0extension =0 .inp0/ >< /Code >)
       @ In, fargs, dict, optional, a dictionary containing the axuiliary input file variables the user can specify in the input (e.g. under the node < Code >< clargstype =0 input0arg =0 aux0extension =0 .aux0/ >< /Code >)
+      @ In, preExec, string, optional, a string the command that needs to be pre-executed before the actual command here defined
       @ Out, returnCommand, tuple, tuple containing the generated command. returnCommand[0] is the command to run the code (string), returnCommand[1] is the name of the output root
     """
 
@@ -147,7 +163,8 @@ class Dymola(CodeInterfaceBase):
       if inputFile.getType() == "DymolaInitialisation":
         foundInit = True
         indexInit = index
-    if not foundInit: raise Exception('Dymola INTERFACE ERROR -> None of the input files has the type "DymolaInitialisation"!')
+    if not foundInit:
+      raise Exception('Dymola INTERFACE ERROR -> None of the input files has the type "DymolaInitialisation"!')
     # Build an output file name of the form: rawout~<Base Name>, where base name is generated from the
     #   input file passed in: /path/to/file/<Base Name>.ext. 'rawout' indicates that this is the direct
     #   output from running the Dymola executable.
@@ -188,8 +205,10 @@ class Dymola(CodeInterfaceBase):
       if inputFile.getType() == "DymolaVectors":
         foundVect = True
         indexVect = index
-    if not foundInit: raise Exception('Dymola INTERFACE ERROR -> None of the input files has the type "DymolaInitialisation"!')
-    if not foundVect: print('Dymola INTERFACE WARNING -> None of the input files has the type "DymolaVectors"! ')
+    if not foundInit:
+      raise Exception('Dymola INTERFACE ERROR -> None of the input files has the type "DymolaInitialisation"!')
+    if not foundVect:
+      print('Dymola INTERFACE WARNING -> None of the input files has the type "DymolaVectors"! ')
     # Figure out the new file name and put it into the proper place in the return list
     #newInputFiles = copy.deepcopy(currentInputFiles)
     originalPath = oriInputFiles[indexInit].getAbsFile()
@@ -205,7 +224,7 @@ class Dymola(CodeInterfaceBase):
     varDict = Kwargs['SampledVars']
 
     vectorsToPass= {}
-    for key, value in varDict.items():
+    for key, value in list(varDict.items()):
       if isinstance(value, bool):
         varDict[key] = 1 if value else 0
       if isinstance(value, numpy.ndarray):
@@ -214,7 +233,8 @@ class Dymola(CodeInterfaceBase):
         print("                            is supposed to go into the simulation initialisation file of type")
         print("                            'DymolaInitialisation' the array must be split into scalars.")
         print("                            => It is assumed that the array goes into the input file with type 'DymolaVectors'")
-        if not foundVect: raise Exception('Dymola INTERFACE ERROR -> None of the input files has the type "DymolaVectors"! ')
+        if not foundVect:
+          raise Exception('Dymola INTERFACE ERROR -> None of the input files has the type "DymolaVectors"! ')
         # extract dict entry
         vectorsToPass[key] = varDict.pop(key)
       assert not type(value).__name__ in ['str','bytes','unicode'], ("Strings cannot be "
@@ -224,18 +244,18 @@ class Dymola(CodeInterfaceBase):
     if bool(vectorsToPass):
       with open(currentInputFiles[indexVect].getAbsFile(), 'w') as Fvect:
         Fvect.write("#1\n")
-        for key, value in vectorsToPass.items() :
+        for key, value in sorted(vectorsToPass.items()) :
           inc = 0
           Fvect.write("double %s(%s,2) #Comments here\n" %(key, len(value)))
           for val in value:
-            Fvect.write("%s\t%s\n" %(inc,val[0]))
+            Fvect.write("%s\t%s\n" %(inc,val))
             inc += 1
 
     # Do the search and replace in input file "DymolaInitialisation"
     # Aliases for some regular sub-expressions.
-    u = '\d+' # Unsigned integer
+    u = '\\d+' # Unsigned integer
     i = '[+-]?' + u # Integer
-    f = i + '(?:\.' + u + ')?(?:[Ee][+-]' + u + ')?' # Floating point number
+    f = i + '(?:\\.' + u + ')?(?:[Ee][+-]' + u + ')?' # Floating point number
 
     # Possible regular expressions for a parameter specification (with '%s' for
     #   the parameter name)
@@ -311,12 +331,12 @@ class Dymola(CodeInterfaceBase):
       @ In, workingDir, string, current working dir
       @ Out, output, string, optional, present in case the root of the output file gets changed in this method.
     """
-    self._vars = {}
-    self._blocks = []
-    self._namesData1 = []
-    self._namesData2 = []
-    self._timeSeriesData1 = []
-    self._timeSeriesData2 = []
+    _vars = {}
+    _blocks = []
+    _namesData1 = []
+    _namesData2 = []
+    _timeSeriesData1 = []
+    _timeSeriesData2 = []
 
     # Load the output file (.mat file) that have been generated by running Dymola executable and
     #   store the data in this file to variable 'mat'.
@@ -324,9 +344,10 @@ class Dymola(CodeInterfaceBase):
     matSourceFileName += '.mat'
     ###################################################################
     #FIXME: LOADMAT HAS A DIFFERENT BEHAVIOR IN SCIPY VERSION >= 0.18 #
-    if int(scipy.__version__.split(".")[1])>17:
-      warnings.warn("SCIPY version >0.17.xx has a different behavior in reading .mat files!")
+    #if int(scipy.__version__.split(".")[1])>17:
+    #  warnings.warn("SCIPY version >0.17.xx has a different behavior in reading .mat files!")
     mat = scipy.io.loadmat(matSourceFileName, chars_as_strings=False)
+
     ###################################################################
 
     # Define the functions that extract strings from the matrix:
@@ -356,11 +377,11 @@ class Dymola(CodeInterfaceBase):
         c = abs(x)-1  # column (reduced)
         s = sign(x)   # sign
         if c:
-          self._vars[names[i]] = (descr[i], d, c, float(s))
-          if not d in self._blocks:
-            self._blocks.append(d)
+          _vars[names[i]] = (descr[i], d, c, float(s))
+          if not d in _blocks:
+            _blocks.append(d)
         else:
-          self._absc = (names[i], descr[i])
+          _absc = (names[i], descr[i])
 
       # Extract the trajectory for the variable 'Time' and store the data in the variable 'timeSteps'.
       timeSteps = mat['data_2'][0]
@@ -372,36 +393,50 @@ class Dymola(CodeInterfaceBase):
       timeStepsArray = numpy.array([timeSteps])
 
       # Extract the names and output points of all variables and store them in the variables:
-      #  - self._namesData1: Names of parameters
-      #  - self._namesData2: Names of the variables that are not parameters
-      #  - self._timeSeriesData1: Trajectories (time series data) of 'self._namesData1'
-      #  - self._timeSeriesData2: Trajectories (time series data) of 'self._namesData2'
-      for (k,v) in self._vars.items():
-        dataValue = mat['data_%d' % (v[1])][v[2]]
-        if v[3] < 0:
-          dataValue = dataValue * -1.0
-        if v[1] == 1:
-          self._namesData1.append(k)
-          self._timeSeriesData1.append(dataValue)
-        elif v[1] == 2:
-          self._namesData2.append(k)
-          self._timeSeriesData2.append(dataValue)
-        else:
-          raise Exception('File structure not supported!')
-      timeSeriesData1 = numpy.array(self._timeSeriesData1)
-      timeSeriesData2 = numpy.array(self._timeSeriesData2)
+      #  - _namesData1: Names of parameters
+      #  - _namesData2: Names of the variables that are not parameters
+      #  - _timeSeriesData1: Trajectories (time series data) of '_namesData1'
+      #  - _timeSeriesData2: Trajectories (time series data) of '_namesData2'
+      for (k,v) in _vars.items():
+        readIt = True
+        if len(self.variablesToLoad) > 0 and k not in self.variablesToLoad:
+          readIt = False
+        if readIt:
+          dataValue = mat['data_%d' % (v[1])][v[2]]
+          if v[3] < 0:
+            dataValue = dataValue * -1.0
+          if v[1] == 1:
+            _namesData1.append(k)
+            _timeSeriesData1.append(dataValue)
+          elif v[1] == 2:
+            _namesData2.append(k)
+            _timeSeriesData2.append(dataValue)
+          else:
+            raise Exception('File structure not supported!')
+      timeSeriesData1 = numpy.array(_timeSeriesData1)
+      timeSeriesData2 = numpy.array(_timeSeriesData2)
+
+      # The csv writer places quotes arround variables that contain a ',' in the name, i.e.
+      # a, "b,c", d would represent 3 variables 1) a 2) b,c 3) d. The csv reader in RAVEN does not
+      # suport this convention.
+      # => replace ',' in variable names with '@', i.e.
+      # a, "b,c", d will become a, b@c, d
+      for mylist in [_namesData1, _namesData2]:
+        for i in range(len(mylist)):
+          if ',' in mylist[i]:
+            mylist[i]  = mylist[i].replace(',', '@')
 
       # Recombine the names of the variables and insert the variable 'Time'.
-      # Order of the variable names should be 'Time', self._namesData1, self._namesData2.
+      # Order of the variable names should be 'Time', _namesData1, _namesData2.
       # Also, convert the type of the resulting variable from 'list' to '2-d array'.
-      varNames = numpy.array([[self._absc[0]] + self._namesData1 + self._namesData2])
+      varNames = numpy.array([[_absc[0]] + _namesData1 + _namesData2])
 
       # Compute the number of parameters.
       sizeParams = timeSeriesData1.shape[0]
 
       # Create a 2-d array whose size is 'the number of parameters' by 'number of ouput points of the trajectories'.
       # Fill each row in a 2-d array with the parameter value.
-      Data1Array =  numpy.full((sizeParams,numOutputPts),1)
+      Data1Array =  numpy.full((sizeParams,numOutputPts),1.)
       for n in range(sizeParams):
         Data1Array[n,:] = timeSeriesData1[n,0]
 
@@ -415,10 +450,21 @@ class Dymola(CodeInterfaceBase):
       destFileName += '.csv' # Add the file extension .csv
 
       # Write the CSV file.
-      with open(destFileName,"wb") as csvFile:
+      with open(destFileName,"w") as csvFile:
         resultsWriter = csv.writer(csvFile, lineterminator=str(u'\n'), delimiter=str(u','), quotechar=str(u'"'))
         resultsWriter.writerows(varNames)
         resultsWriter.writerows(varTrajectories)
     else:
       raise Exception('File structure not supported!')
+    #release memory
+    del _vars
+    del _blocks
+    del _namesData1
+    del _namesData2
+    del _timeSeriesData1
+    del _timeSeriesData2
+    del _absc
+    del Data1Array
+    del timeSeriesData1
+    del timeSeriesData2
     return os.path.splitext(destFileName)[0]   # Return the name without the .csv on it as RAVEN will add it later.

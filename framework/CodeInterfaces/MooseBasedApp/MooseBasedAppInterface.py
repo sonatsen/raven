@@ -34,7 +34,7 @@ class MooseBasedApp(CodeInterfaceBase):
     CodeInterfaceBase.__init__(self)
     self.outputPrefix = 'out~'
 
-  def generateCommand(self,inputFiles,executable,clargs=None,fargs=None):
+  def generateCommand(self,inputFiles,executable,clargs=None,fargs=None,preExec=None):
     """
       See base class.  Collects all the clargs and the executable to produce the command-line call.
       Returns tuple of commands and base file name for run.
@@ -44,6 +44,7 @@ class MooseBasedApp(CodeInterfaceBase):
       @ In, executable, string, executable name with absolute path (e.g. /home/path_to_executable/code.exe)
       @ In, clargs, dict, optional, dictionary containing the command-line flags the user can specify in the input (e.g. under the node < Code >< clargstype =0 input0arg =0 i0extension =0 .inp0/ >< /Code >)
       @ In, fargs, dict, optional, a dictionary containing the axuiliary input file variables the user can specify in the input (e.g. under the node < Code >< clargstype =0 input0arg =0 aux0extension =0 .aux0/ >< /Code >)
+      @ In, preExec, string, optional, a string the command that needs to be pre-executed before the actual command here defined
       @ Out, returnCommand, tuple, tuple containing the generated command. returnCommand[0] is the command to run the code (string), returnCommand[1] is the name of the output root
     """
     found = False
@@ -52,8 +53,10 @@ class MooseBasedApp(CodeInterfaceBase):
       if inputFile.getExt() in self.getInputExtension():
         found = True
         break
-    if not found: raise IOError('None of the input files has one of the following extensions: ' + ' '.join(self.getInputExtension()))
-    if fargs['moosevpp'] != '' : self.mooseVPPFile = fargs['moosevpp']
+    if not found:
+      raise IOError('None of the input files has one of the following extensions: ' + ' '.join(self.getInputExtension()))
+    if fargs['moosevpp'] != '':
+      self.mooseVPPFile = fargs['moosevpp']
     outputfile = self.outputPrefix+inputFiles[index].getBase()
     executeCommand = [('parallel',executable+' -i '+inputFiles[index].getFilename())]
     returnCommand = executeCommand, outputfile
@@ -70,29 +73,25 @@ class MooseBasedApp(CodeInterfaceBase):
       @ Out, newInputFiles, list, list of newer input files, list of the new input files (modified and not)
     """
     import MOOSEparser
-    self._samplersDictionary                          = {}
-    self._samplersDictionary['MonteCarlo'           ] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['Grid'                 ] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['Stratified'           ] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['DynamicEventTree'     ] = self.dynamicEventTreeForMooseBasedApp
-    self._samplersDictionary['StochasticCollocation'] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['FactorialDesign'      ] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['ResponseSurfaceDesign'] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['LimitSurfaceSearch'   ] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['SparseGridCollocation'] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['EnsembleForward'      ] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['CustomSampler'        ] = self.pointSamplerForMooseBasedApp
-    self._samplersDictionary['None'                 ] = self.pointSamplerForMooseBasedApp #for SingleRun case
+    self._samplersDictionary                = {}
+    if 'dynamiceventtree' in str(samplerType).lower():
+      self._samplersDictionary[samplerType] = self.dynamicEventTreeForMooseBasedApp
+    else:
+      self._samplersDictionary[samplerType] = self.pointSamplerForMooseBasedApp
+
     found = False
     for index, inputFile in enumerate(currentInputFiles):
       inputFile = inputFile.getAbsFile()
       if inputFile.endswith(self.getInputExtension()):
         found = True
         break
-    if not found: raise IOError('None of the input files has one of the following extensions: ' + ' '.join(self.getInputExtension()))
+    if not found:
+      raise IOError('None of the input files has one of the following extensions: ' + ' '.join(self.getInputExtension()))
     outName = self.outputPrefix+currentInputFiles[index].getBase()
     parser = MOOSEparser.MOOSEparser(currentInputFiles[index].getAbsFile())
-    modifDict = self._samplersDictionary[samplerType](**Kwargs)
+    modifDict = {}
+    if 'None' not in str(samplerType):
+      modifDict = self._samplersDictionary[samplerType](**Kwargs)
     #set up output
     modifDict.append({'csv':'true','name':['Outputs']})
     modifDict.append({'file_base':outName,'name':['Outputs']})
@@ -139,7 +138,8 @@ class MooseBasedApp(CodeInterfaceBase):
       @ Out, returnOut, string, optional, present in case the root of the output file gets changed in this method.
     """
     returnOut = output
-    if self.vectorPPFound: returnOut = self.__mergeTime(output,workingDir)[0]
+    if self.vectorPPFound:
+      returnOut = self.__mergeTime(output,workingDir)[0]
     return returnOut
 
   def __mergeTime(self,output,workingDir):
@@ -170,7 +170,8 @@ class MooseBasedApp(CodeInterfaceBase):
     for var in Kwargs['SampledVars']:
       key = var.split(':')
       modifDict = {}
-      if '|' not in key[0]: continue
+      if '|' not in key[0]:
+        continue
       modifDict['name'] = key[0].split('|')[:-1]
       modifDict[key[0].split('|')[-1]] = Kwargs['SampledVars'][var]
       listDict.append(modifDict)

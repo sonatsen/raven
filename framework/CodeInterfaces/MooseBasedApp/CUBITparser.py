@@ -19,8 +19,6 @@ created on Jul 15, 2015
 from __future__ import division, print_function, unicode_literals, absolute_import
 import warnings
 warnings.simplefilter('default',DeprecationWarning)
-if not 'xrange' in dir(__builtins__):
-  xrange = range
 
 import os
 import re
@@ -37,7 +35,8 @@ class CUBITparser():
       @ Out, None
     """
     self.printTag = 'CUBIT_PARSER'
-    if not os.path.exists(inputFile.getAbsFile()): raise IOError('Input file not found: '+inputFile.getAbsFile())
+    if not os.path.exists(inputFile.getAbsFile()):
+      raise IOError('Input file not found: '+inputFile.getAbsFile())
     # Initialize file dictionary, storage order, and internal variables
     self.keywordDictionary = collections.OrderedDict()
     self.fileOrderStorage = []
@@ -59,14 +58,17 @@ class CUBITparser():
           if splitline_clear_ws[1] != splitline[1].strip():
             between_str += line
           elif splitline_clear_ws[1] == splitline[1].strip():
-            if len(between_str) > 0: self.fileOrderStorage.append(between_str); between_str = ''
-            if dict_stored == False: self.fileOrderStorage.append(['dict_location']); dict_stored = True
+            if len(between_str) > 0:
+              self.fileOrderStorage.append(between_str); between_str = ''
+            if dict_stored == False:
+              self.fileOrderStorage.append(['dict_location']); dict_stored = True
             _, keywordAndValue, _ = re.split('#{|}',clear_ws)
             varname, varvalue = keywordAndValue.split('=')
             self.keywordDictionary[varname] = varvalue
       else:
         between_str += line
-    if len(between_str) > 0: self.fileOrderStorage.append(between_str)
+    if len(between_str) > 0:
+      self.fileOrderStorage.append(between_str)
 
   def modifyInternalDictionary(self,**inDictionary):
     """
@@ -84,7 +86,8 @@ class CUBITparser():
       @ In, outFile, string, optional, outFile name
       @ Out, None
     """
-    if outFile == None: outFile = self.inputfile
+    if outFile == None:
+      outFile = self.inputfile
     IOfile = open(outFile,'w')
     for entry in self.fileOrderStorage:
       if type(entry) == unicode:

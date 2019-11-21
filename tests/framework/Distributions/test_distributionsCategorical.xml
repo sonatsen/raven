@@ -1,0 +1,174 @@
+<?xml version="1.0" ?>
+<Simulation verbosity="debug">
+  <TestInfo>
+    <name>framework.Distributions.categorical</name>
+    <author>mandd</author>
+    <created>2016-11-02</created>
+    <classesTested>Distributions.Categorical</classesTested>
+    <description>
+       This test is aimed to test the capability of RAVEN to use 1D Categorical distributions.
+    </description>
+    <revisions>
+      <revision author="alfoa" date="2017-01-21">Adding this test description.</revision>
+      <revision author="wangc" date="2017-12-20">convert test to use the new DataObjects with the new structure of basic statistic</revision>
+      <revision author="wangc" date="2018-12-18">
+          In PR #882, the standard errors on statistics moments are implemented, these quantities are stored in
+          the pointwise metadata, and will be printed out in the output csv files by default.
+          In order to avoid regolding this test, the optional node 'what' with text values 'input, output' is added.
+          In this case, only the user requested variables as specified in the DataObjects are printed out. 
+      </revision>
+    </revisions>
+  </TestInfo>
+
+  <RunInfo>
+    <WorkingDir>test_categorical/</WorkingDir>
+    <Sequence>MCrun,PP_MC,GridRun,PP_Grid, OutStreams</Sequence>
+    <batchSize>1</batchSize>
+  </RunInfo>
+
+  <Steps>
+    <MultiRun name="MCrun">
+      <Input class="DataObjects" type="PointSet">inputPlaceHolder</Input>
+      <Model class="Models" type="ExternalModel">PythonModule</Model>
+      <Sampler class="Samplers" type="MonteCarlo">MC</Sampler>
+      <Output class="DataObjects" type="PointSet">PointSet_MC</Output>
+    </MultiRun>
+    <PostProcess name="PP_MC">
+      <Input class="DataObjects" type="PointSet">PointSet_MC</Input>
+      <Model class="Models" type="PostProcessor">BS</Model>
+      <Output class="DataObjects" type="PointSet">BS_basicStatPP</Output>
+      <Output class="OutStreams" type="Print">BS_basicStatPP_dump</Output>
+    </PostProcess>
+    <MultiRun name="GridRun">
+      <Input class="DataObjects" type="PointSet">inputPlaceHolder</Input>
+      <Model class="Models" type="ExternalModel">PythonModule</Model>
+      <Sampler class="Samplers" type="MonteCarlo">Grid</Sampler>
+      <Output class="DataObjects" type="PointSet">PointSet_Grid</Output>
+    </MultiRun>
+    <PostProcess name="PP_Grid">
+      <Input class="DataObjects" type="PointSet">PointSet_Grid</Input>
+      <Model class="Models" type="PostProcessor">BS</Model>
+      <Output class="DataObjects" type="PointSet">BS_basicStatPP_grid</Output>
+      <Output class="OutStreams" type="Print">BS_basicStatPP_grid_dump</Output>
+    </PostProcess>
+    <IOStep name="OutStreams" pauseAtEnd="false">
+      <Input class="DataObjects" type="PointSet">PointSet_MC</Input>
+      <Input class="DataObjects" type="PointSet">PointSet_Grid</Input>
+      <Output class="OutStreams" type="Print">MC_dump</Output>
+      <Output class="OutStreams" type="Print">Grid_dump</Output>
+      <Output class="OutStreams" type="Plot">plotXMC</Output>
+      <Output class="OutStreams" type="Plot">plotYMC</Output>
+    </IOStep>
+  </Steps>
+
+  <Models>
+    <ExternalModel ModuleToLoad="simple" name="PythonModule" subType="">
+      <variables>x,y</variables>
+    </ExternalModel>
+    <PostProcessor name="BS" subType="BasicStatistics" verbosity="debug">
+      <expectedValue prefix="mean">x,y</expectedValue>
+    </PostProcessor>
+  </Models>
+
+  <Distributions>
+    <Categorical name="x_dist">
+      <state outcome="1">0.2</state>
+      <state outcome="2.0">0.3</state>
+      <state outcome="2.5">0.5</state>
+    </Categorical>
+  </Distributions>
+
+  <Samplers>
+    <MonteCarlo name="MC">
+      <samplerInit>
+        <limit>10</limit>
+        <initialSeed>1234</initialSeed>
+      </samplerInit>
+      <variable name="x">
+        <distribution>x_dist</distribution>
+      </variable>
+    </MonteCarlo>
+    <Grid name="Grid">
+      <variable name="x">
+        <distribution>x_dist</distribution>
+        <grid construction="custom" type="value">1.0 2.0 2.5</grid>
+      </variable>
+    </Grid>
+  </Samplers>
+
+  <OutStreams>
+    <Print name="MC_dump">
+      <type>csv</type>
+      <source>PointSet_MC</source>
+      <what>input,output</what>
+    </Print>
+    <Print name="Grid_dump">
+      <type>csv</type>
+      <source>PointSet_Grid</source>
+      <what>input,output</what>
+    </Print>
+    <Print name="BS_basicStatPP_dump">
+      <type>csv</type>
+      <source>BS_basicStatPP</source>
+      <what>input,output</what>
+    </Print>
+    <Print name="BS_basicStatPP_grid_dump">
+      <type>csv</type>
+      <source>BS_basicStatPP_grid</source>
+      <what>input,output</what>
+    </Print>
+    <Plot name="plotXMC" overwrite="false" verbosity="debug">
+      <plotSettings>
+        <plot>
+          <type>histogram</type>
+          <x>PointSet_MC|Input|x</x>
+          <bins>30</bins>
+        </plot>
+        <xlabel>x</xlabel>
+      </plotSettings>
+      <actions>
+        <how>pdf</how>
+      </actions>
+    </Plot>
+    <Plot name="plotYMC" overwrite="false" verbosity="debug">
+      <plotSettings>
+        <plot>
+          <type>histogram</type>
+          <x>PointSet_MC|Output|y</x>
+          <bins>30</bins>
+        </plot>
+        <xlabel>x</xlabel>
+      </plotSettings>
+      <actions>
+        <how>pdf</how>
+      </actions>
+    </Plot>
+  </OutStreams>
+
+  <DataObjects>
+    <PointSet name="inputPlaceHolder">
+      <Input>x</Input>
+      <Output>OutputPlaceHolder</Output>
+    </PointSet>
+    <PointSet name="PointSet_MC">
+      <Input>x</Input>
+      <Output>y</Output>
+    </PointSet>
+    <PointSet name="PointSet_Grid">
+      <Input>x</Input>
+      <Output>y</Output>
+    </PointSet>
+    <PointSet name="BS_basicStatPP">
+      <Output>BS_vars</Output>
+    </PointSet>
+    <PointSet name="BS_basicStatPP_grid">
+      <Output>BS_vars</Output>
+    </PointSet>
+  </DataObjects>
+
+  <VariableGroups>
+    <Group name="BS_vars">mean_x,
+                 mean_y</Group>
+  </VariableGroups>
+
+</Simulation>

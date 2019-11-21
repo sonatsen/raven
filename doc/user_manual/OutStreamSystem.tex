@@ -175,6 +175,14 @@ available attributes:
     %
   \nb As with other objects, this name can be used to refer to this specific
   entity from other input blocks in the XML.
+  %
+  \item \xmlAttr{dir}, \xmlDesc{optional string attribute}, is a user-defined
+  directory in which the data are going to be streamed (i.e. printed). The 
+  directory can be either inputted with an relative (with respect the \xmlNode{workingDir} specified
+  in the   \xmlNode{RunInfo} XML node)  or absolute path 
+  %
+  \default{\xmlNode{workingDir}}
+  %
  \end{itemize}
 As shown in the examples below, every \xmlNode{Print} block must contain, at
 least, the two required tags:
@@ -362,6 +370,13 @@ In addition, the Plot block accepts the following attributes:
   same name) is requested.
   %
   \default{False}
+  %
+    \item \xmlAttr{dir}, \xmlDesc{optional string attribute}, is a user-defined
+  directory in which the data are going to be streamed (i.e. printed). The 
+  directory can be either inputted with an relative (with respect the \xmlNode{workingDir} specified
+  in the   \xmlNode{RunInfo} XML node)  or absolute path 
+  %
+  \default{\xmlNode{workingDir}}
   %
 \end{itemize}
 \vspace{-5mm}
@@ -859,7 +874,6 @@ combined in the same figure.
           <y>1</y>
         </gridLocation>
       </plot>
-      </plot>
     </plotSettings>
   </Plot>
 </OutStreams>
@@ -868,7 +882,7 @@ combined in the same figure.
 The axis labels  are conditionally optional nodes
 that can be defined under the \xmlNode{plotSetting}. If the plot does not contain any sub-plots,
 i.e. \xmlNode{gridSpace} is not defined then the axis labels are global parameters for the figure
-which are deifned under \xmlNode{plotSettings}, otherwise the axis labels can be defined under \xmlNode{plot}
+which are defined under \xmlNode{plotSettings}, otherwise the axis labels can be defined under \xmlNode{plot}
 for each sub-plot seperately.
 \begin{itemize}
   \item \xmlNode{xlabel}, \xmlDesc{string, optional parameter}, the x axis
@@ -880,6 +894,73 @@ for each sub-plot seperately.
 \end{itemize}
 %
 
+One may also specify a \xmlNode{legend} tag that will place a legend on the plot.
+The legend accepts the following sub-nodes:
+
+\begin{itemize}
+  \item \xmlNode{loc}, \xmlDesc{string, optional parameter}, the location where the legend will be placed on the plot. Valid values are:
+  \begin{itemize}
+    \item \xmlString{best}
+    \item \xmlString{upper right}
+    \item \xmlString{upper left}
+    \item \xmlString{lower left}
+    \item \xmlString{lower right}
+    \item \xmlString{right}
+    \item \xmlString{center left}
+    \item \xmlString{center right}
+    \item \xmlString{lower center}
+    \item \xmlString{upper center}
+    \item \xmlString{center}
+  \end{itemize}
+  \default{\xmlString{best}}
+  \item \xmlNode{ncol}, \xmlDesc{integer, optional parameter}, the number of columsn to include in the legend.
+  \default{1}
+  \item \xmlNode{fontsize}, \xmlDesc{string, optional parameter}, the font size of the legend. Valid values are:
+  \begin{itemize}
+    \item \xmlString{xx-small}
+    \item x-small
+    \item \xmlString{small}
+    \item \xmlString{medium}
+    \item \xmlString{large}
+    \item \xmlString{x-large}
+    \item \xmlString{xx-large}
+  \end{itemize}
+  \item \xmlNode{title}, \xmlDesc{string, optional parameter}, the title of the legend.
+\end{itemize}
+
+\nb The text associated to each \xmlNode{plot} tag in the legend is defined in the \xmlNode{kwargs} of that plot by specifying a \xmlNode{label} within the kwargs.
+An example usage is given below:
+
+\begin{lstlisting}[style=XML]
+<Plot ...>
+  ...
+  <plotSettings>
+    <plot>
+      <type>scatter</type>
+        <x>...</x>
+        <y>...</y>
+        <kwargs>
+          <label>dots</label>
+        </kwargs>
+     </plot>
+    <plot>
+      <type>line</type>
+        <x>...</x>
+        <y>...</y>
+        <kwargs>
+          <label>line</label>
+        </kwargs>
+     </plot>
+    <legend>
+      <loc>best</loc>
+      <ncol>2</ncol>
+    </legend>
+  </plotSettings>
+</Plot>
+\end{lstlisting}
+
+This will create a plot with both scattered points and a line. The plot will also have a legend specifying the labels ``dots'' and ``line'' in two columns with the best location selected by matplotlib.
+
 As already mentioned, within the \xmlNode{plotSettings} block, at least a
 \xmlNode{plot} sub-block needs to be specified.
 %
@@ -887,14 +968,14 @@ Independent of the plot type, some keywords are mandatory:
 \begin{itemize}
   \item \xmlNode{type}, \xmlDesc{string, required parameter}, the plot type (for
   example, line, scatter, wireframe, etc.).
-  \item \xmlNode{x}, \xmlDesc{string, required parameter}, this parameter needs
-  to be considered as the x coordinate.
-  \item \xmlNode{y}, \xmlDesc{string, required parameter}, this parameter needs
-  to be considered as the y coordinate.
-  \item \xmlNode{z}, \xmlDesc{string required parameter (3D plots only)}, this
-  parameter needs to be considered as the z coordinate.
-  %
+  \item \xmlNode{x}, \xmlDesc{string, required parameter}, specifies the DataObject parameter to be plotted as the x coordinate.   
+	This parameter must be described in a specific manner, see Section \ref{subpara:plotVariables} below for details.
+  \item \xmlNode{y}, \xmlDesc{string, required parameter}, specifies the DataObject parameter to be plotted as the y coordinate.
+	This parameter must be described in a specific manner, see Section \ref{subpara:plotVariables} below for details.
+  \item \xmlNode{z}, \xmlDesc{string, required parameter for plots with three dimensions}, specifies the DataObject parameter to be plotted as the z coordinate.
+	This parameter must be described in a specific manner, see Section \ref{subpara:plotVariables} below for details.
 \end{itemize}
+%
 In addition, other plot-dependent keywords, reported in
 Section~\ref{sec:23Dplotting}, can be provided.
 
@@ -918,19 +999,34 @@ Under the \xmlNode{plot} sub-block other optional keywords can be specified, suc
         the second integer represents the number of nodes that this subplot occupies, i.e. in the example above the
         first subplot occupies a single node at the zero node in y direction.
   \end{itemize}
-  \item \xmlNode{colorMap}, \xmlDesc{string, optional parameter}, this parameter will be used to
-  define a color map.
+  \item \xmlNode{colorMap}, \xmlDesc{string, optional parameter}, specifies a DataObject parameter whose value will be used 
+	to vary the color of plotted points.  This parameter must be described in a specific manner, see Section \ref{subpara:plotVariables} 
+	below for details.
  \end{itemize}
 
+\subparagraph{Specifying What Values to Plot \label{subpara:plotVariables}}
 As already mentioned, the Plot system accepts as input for the visual parameters
 (i.e., x, y, z, colorMap), data only from a \textbf{DataObjects} object.
 %
-Considering the structure of ``DataObjects,'' the parameters are inputted as follows:
-\texttt{DataObjectName|Input(or)Output|variableName}.
+Considering the structure of "DataObjects", the parameters are specified as three values separated by the
+vertical bar character ('\texttt{|}') as follows:
+\\* \\* \centerline{\texttt{DataObject Name|Parameter Type|Parameter Name}}
+\\ \\  Where: 
+\begin{center}
+\begin{tabular}{ll}
+Value & Description \\ \hline
+\multicolumn{1}{|l|}{\texttt{DataObject Name}} & \multicolumn{1}{l|}{Name of the DataObject that contains the parameter} \\ \hline
+\multicolumn{1}{|l|}{\texttt{Parameter Type}} & \multicolumn{1}{l|}{
+	\begin{tabular}[c]{@{}l@{}}Either \texttt{Input} or \texttt{Output} depending on whether the parameter \\
+		is defined in the \xmlNode{Input} or \xmlNode{Output} part of the DataObject \end{tabular}} \\ \hline
 
-If the ``variableName'' contains the symbol \texttt{|}, it must be surrounded by
-brackets:
-\texttt{[DataObjectName|Input(or)Output|(whatever|variableName)]}.
+\multicolumn{1}{|l|}{\texttt{Parameter Name}} & \multicolumn{1}{l|}{The name of the parameter in the DataObject to plot} \\ \hline
+\end{tabular}
+\end{center}
+\textbf{Note:}  If the \texttt{Parameter Name} part of the variable specification itself contains the vertical bar character (`\texttt{|}`) used to separate 
+the three values, it must be enclosed in parenthesis to be interpreted properly.  For example:
+\\* \\* \centerline{\texttt{DataObject Name|Parameter Type|(parameter|name)}}
+
 %%%%%%%%%%%%%
 %Predefined Plotting System block sub-sub-sub section
 %%%%%%%%%%%%%

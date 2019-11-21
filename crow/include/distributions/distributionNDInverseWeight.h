@@ -30,6 +30,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <fstream>
+#include <iso646.h>
 
 #define throwError(msg) { std::cerr << "\n\n" << msg << "\n\n"; throw std::runtime_error("Error"); }
 
@@ -183,6 +184,23 @@ public:
     return value;
   }
 
+  double marginal(double x, int dimension)
+    /**
+     * Method to get the margina cdf give the dimension id
+     * and the value x
+     * @ In, double, x, the parameter value
+     * @ In, int, dimension, the dimension id
+     * @ Out, double, value, the marginal CDF value at x for dim dimension
+     */
+    {
+        double value=0.0;
+        if (_cdf_provided){
+            throwError("BasicMultiDimensionalInverseWeight Distribution error: marginal calculation not available if CDF provided");
+        }else{
+            value = _cdf_spline.marginal(x, dimension);
+        }
+        return value;
+    }
 
   int
   returnDimensionality()

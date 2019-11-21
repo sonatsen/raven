@@ -24,6 +24,7 @@ warnings.simplefilter('default',DeprecationWarning)
 #External Modules------------------------------------------------------------------------------------
 import sys
 import itertools
+import copy
 #External Modules End--------------------------------------------------------------------------------
 #Internal Modules------------------------------------------------------------------------------------
 from utils import utils
@@ -39,10 +40,11 @@ class graphObject(object):
     """
       Initializes a graph object
       If no dictionary or None is given, an empty dictionary will be used
-      @ In, graphDict, dict, the graph dictionary ({'Node':[connectedNode1,connectedNode2, etc.]}
+      @ In, graphDict, dict, the graph dictionary ({'Node':[connectedNode1,connectedNode2, etc.]} where connectedNode is a node that relies on Node
     """
-    if graphDict == None: graphDict = {}
-    self.__graphDict = { k.strip():v for k, v in graphDict.iteritems()}
+    if graphDict is None:
+      graphDict = {}
+    self.__graphDict = { k.strip():v for k, v in graphDict.items()}
 
   def vertices(self):
     """
@@ -71,7 +73,8 @@ class graphObject(object):
       @ In, vertex, string, the new vertex (e.g. 'a')
       @ Out, None
     """
-    if vertex not in self.__graphDict: self.__graphDict[vertex] = []
+    if vertex not in self.__graphDict:
+      self.__graphDict[vertex] = []
 
   def addEdge(self, edge):
     """
@@ -106,7 +109,8 @@ class graphObject(object):
     edges = []
     for vertex in self.__graphDict:
       for neighbour in self.__graphDict[vertex]:
-        if {neighbour, vertex} not in edges:edges.append({vertex, neighbour})
+        if {neighbour, vertex} not in edges:
+          edges.append({vertex, neighbour})
     return edges
 
 #   def __str__(self):
@@ -121,10 +125,12 @@ class graphObject(object):
   def findIsolatedVertices(self):
     """
       This method ispects the graph and returns a list of isolated vertices.
+      WARNING: the self.__extendDictForGraphTheory() is used here, and never store the outputs
+      of this method into the self.__graphDict.
       @ In, None
       @ Out, isolated, list, list of isolated nodes (verteces)
     """
-    graph = self.__graphDict
+    graph = self.__extendDictForGraphTheory()
     isolated = []
     for vertex in graph:
       if not graph[vertex]:
@@ -149,7 +155,8 @@ class graphObject(object):
       for vertex in graph[startVertex]:
         if vertex not in path:
           extendedPath = self.findPath(vertex, endVertex, path)
-          if extendedPath: return extendedPath
+          if extendedPath:
+            return extendedPath
     return extendedPath
 
   def isALoop(self):
@@ -170,7 +177,8 @@ class graphObject(object):
       """
       path.add(vertex)
       for neighbour in g.get(vertex, ()):
-        if neighbour in path or visit(neighbour): return True
+        if neighbour in path or visit(neighbour):
+          return True
       path.remove(vertex)
       return False
     return any(visit(v) for v in g)
@@ -185,69 +193,90 @@ class graphObject(object):
     """
     graph = self.__graphDict
     path = path + [startVertex]
-    if startVertex == endVertex: return [path]
-    if startVertex not in graph: return []
+    if startVertex == endVertex:
+      return [path]
+    if startVertex not in graph:
+      return []
     paths = []
     for vertex in graph[startVertex]:
       if vertex not in path:
         extendedPaths = self.findAllPaths(vertex,endVertex,path)
-        for p in extendedPaths: paths.append(p)
+        for p in extendedPaths:
+          paths.append(p)
     return paths
 
-  def isConnected(self, verticesEncountered = None, startVertex=None):
+  def isConnected(self, graphDict, verticesEncountered = None, startVertex=None):
     """
       Method that determines if the graph is connected (graph theory connectivity)
       @ In, verticesEncountered, set, the encountered vertices (generally it is None when called from outside)
+      @ In, graphDict, dict, the graph dictionary
       @ In, startVertex, string, the starting vertex
       @ Out, isConnected, bool, is the graph fully connected?
     """
-    if verticesEncountered is None: verticesEncountered = set()
-    gdict = self.__graphDict
-    vertices = list(gdict.keys())
+    if verticesEncountered is None:
+      verticesEncountered = set()
+    vertices = list(graphDict.keys())
     if not startVertex:
       # chosse a vertex from graph as a starting point
       startVertex = vertices[0]
     verticesEncountered.add(startVertex)
     if len(verticesEncountered) != len(vertices):
-      for vertex in gdict[startVertex]:
+      for vertex in graphDict[startVertex]:
         if vertex not in verticesEncountered:
-          if self.isConnected(verticesEncountered, vertex): return True
-    else: return True
+          if self.isConnected(graphDict, verticesEncountered, vertex):
+            return True
+    else:
+      return True
     return False
 
-  def isConnectedNet(self, startVertex=None):
+  def isConnectedNet(self):
     """
-      Method that determines if the graph is a connected net (all the vertices are connect with each other through other vertices)
-      This method can state that we have a connected net even if, based on graph theory, the graph is not connected
-      @ In, startVertex, string, the starting vertex
+      Method that determines if the graph is a connected net (all the vertices are connect
+      with each other through other vertices).
+      WARNING: the self.__extendDictForGraphTheory() is used here, and never store the outputs
+      of this method into the self.__graphDict.
+      @ In, None
       @ Out, graphNetConnected, bool, is the graph net fully connected?
     """
-    graphNetConnected = self.isConnected()
-    if graphNetConnected: return graphNetConnected
-    # the graph is not connected (Graph theory)
-    uniquePaths = self.findAllUniquePaths()
-    # now check if there is at list a node that is common in all the paths
-    if len(uniquePaths) > 0:
-      graphNetConnected = True
-      startPath = set(uniquePaths.pop())
-      for otherPath in uniquePaths:
-        if startPath.isdisjoint(otherPath):
-          graphNetConnected = False
-          break
+    graphDict = self.__extendDictForGraphTheory()
+    graphNetConnected = self.isConnected(graphDict)
     return graphNetConnected
 
-  def findAllUniquePaths(self):
+  def __extendDictForGraphTheory(self):
+    """
+      Method to extend the graph dictionary in order to be accepted by the graph theory.
+      WARNING: This is method is only used to extend the __graphDict, and should be only
+      used for isConnectedNet method. The extended dictionary should not be stored in
+      __graphDict. This is because the class graphObject is supposed to work with
+      directed graph to determine the execution orders of the Models listed under EnsembleModel.
+      @ In, None
+      @ Out, graphDict, dict, the extended graph dictionary, used for isConnectedNet and findIsolatedVertices
+    """
+    graphDict = copy.deepcopy(self.__graphDict)
+    # Extend graph dictionary generated by ensemble model to graph theory acceptable dictionary
+    # Basicly, if a -> b (a is connected to b), the self.__graphDict = {'a':['b'], 'b':[]}
+    # Since a is connected to b, from the graph theory, the dictionary should become {'a':['b'], 'b':['a']}
+    for inModel, outModelList in self.__graphDict.items():
+      for outModel in outModelList:
+        if inModel not in graphDict[outModel]:
+          graphDict[outModel].append(inModel)
+    return graphDict
+
+  def findAllUniquePaths(self, startVertices=None):
     """
       This method finds all the unique paths in the graph
       N.B. This method is not super efficient but since it is used generally at construction stage
       of the graph, it is not a big problem
-      @ In, None
+      @ In, startVertices, list, optional, list of start vertices
       @ Out, uniquePaths,list, list of unique paths (verteces)
     """
     paths = []
-    for vert in self.vertices():
+    if not startVertices:
+      startVertices = self.vertices()
+    for vert in startVertices:
       for vertex in self.vertices():
-        if vertex != vert: paths.extend(self.findAllPaths(vertex, vert))
+        if vertex != vert:
+          paths.extend(self.findAllPaths(vert, vertex))
     uniquePaths = list(utils.filterAllSubSets(paths))
     return uniquePaths
 
@@ -258,9 +287,11 @@ class graphObject(object):
       @ In, uniquePaths, list of list, optional, list of unique paths. If not present, the unique paths are going to be determined
       @ Out, singleList, list, list of vertices in "ascending" order
     """
-    if uniquePaths is None: uniquePaths = self.findAllUniquePaths()
+    if uniquePaths is None:
+      uniquePaths = self.findAllUniquePaths()
     singleList = []
-    for pathCnt in range(len(uniquePaths)): singleList = utils.mergeSequences(singleList,uniquePaths[pathCnt])
+    for pathCnt in range(len(uniquePaths)):
+      singleList = utils.mergeSequences(singleList,uniquePaths[pathCnt])
     return singleList
 
   def vertexDegree(self, vertex):
@@ -307,10 +338,11 @@ class graphObject(object):
       @ In, None
       @ Out, minDegree, integer, the minimum degree of the vertices
     """
-    minDegree = sys.maxint
+    minDegree = 2**62 #sys.maxint
     for vertex in self.__graphDict:
       vertexDegree = self.vertexDegree(vertex)
-      if vertexDegree < minDegree: minDegree = vertexDegree
+      if vertexDegree < minDegree:
+        minDegree = vertexDegree
     return minDegree
 
   def maxDelta(self):
@@ -322,7 +354,8 @@ class graphObject(object):
     maxDegree = 0
     for vertex in self.__graphDict:
       vertexDegree = self.vertexDegree(vertex)
-      if vertexDegree > maxDegree: maxDegree = vertexDegree
+      if vertexDegree > maxDegree:
+        maxDegree = vertexDegree
     return maxDegree
 
   def density(self):
@@ -333,8 +366,10 @@ class graphObject(object):
     """
     V = len(self.__graphDict.keys())
     E = len(self.edges())
-    try   : dens = 2.0 * E / (V *(V - 1))
-    except: dens = 0
+    try:
+      dens = 2.0 * E / (V *(V - 1))
+    except:
+      dens = 0
     return dens
 
   def diameter(self):
@@ -352,7 +387,8 @@ class graphObject(object):
       paths = self.findAllPaths(s,e)
       sortedPath = sorted(paths, key=len)
       smallest = sortedPath[0] if len(sortedPath) > 0 else None
-      if smallest is not None: smallestPaths.append(smallest)
+      if smallest is not None:
+        smallestPaths.append(smallest)
     smallestPaths.sort(key=len)
     # longest path is at the end of list,
     # i.e. diameter corresponds to the length of this path

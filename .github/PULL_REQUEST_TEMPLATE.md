@@ -1,5 +1,5 @@
 --------
-Pull Requeset Description
+Pull Request Description
 --------
 ##### What issue does this change request address? (Use "#" before the issue to link it, i.e., #42.)
 
@@ -19,3 +19,5 @@ The following review must be completed by an authorized member of the Change Con
 - [ ] 6. If the change modifies or adds a requirement or a requirement based test case, the Change Control Board's Chair or designee also needs to approve the change.  The requirements and the requirements test shall be in sync.
 - [ ] 7. The merge request must reference an issue.  If the issue is closed, the issue close checklist shall be done.
 - [ ] 8. If an analytic test is changed/added is the the analytic documentation updated/added?
+- [ ] 9. If any test used as a basis for documentation examples (currently found in `raven/tests/framework/user_guide` and `raven/docs/workshop`) have been changed, the associated documentation must be reviewed and assured the text matches the example.
+

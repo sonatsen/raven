@@ -9,6 +9,7 @@
       Tests using the limit node with a max on node.
     </description>
   </TestInfo>
+
   <RunInfo>
     <WorkingDir>.</WorkingDir>
     <Sequence>FirstMLRun</Sequence>
@@ -16,7 +17,7 @@
     <clusterParameters>-W block=true</clusterParameters>
     <NumThreads>1</NumThreads>
     <mode>
-      mpi
+      mpilegacy
       <runQSUB/>
       <LimitNode maxOnNode="2"/>
     </mode>
@@ -79,14 +80,9 @@
       <Input class="Files" type="">simple_gp_test.i</Input>
       <Model class="Models" type="Code">MyRAVEN</Model>
       <Sampler class="Samplers" type="MonteCarlo">RAVENmc6</Sampler>
-      <Output class="Databases" type="HDF5">testDatabase</Output>
       <Output class="DataObjects" type="HistorySet">stories</Output>
     </MultiRun>
   </Steps>
-
-  <Databases>
-    <HDF5 name="testDatabase" readMode="overwrite"/>
-  </Databases>
 
   <DataObjects>
     <HistorySet name="stories">

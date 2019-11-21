@@ -2,9 +2,10 @@
   [./StatisticalAnalysis]
     type = 'RavenFramework'
     input = 'statisticalAnalysis.xml'
-    UnorderedXml = 'StatisticalAnalysis/output_stat_analysis_mc.xml'
+    csv = 'StatisticalAnalysis/statisticalAnalysis_basicStatPP_dump.csv'
     required_libraries = 'PIL'
     heavy = true
     rel_err = 1e-3
+    zero_threshold = 1e-9
   [../]
 []

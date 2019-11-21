@@ -19,35 +19,47 @@ Created on Feb 20, 2013
 
 This is the Driver of RAVEN
 """
-#For future compatibility with Python 3
-from __future__ import division, print_function, absolute_import
-import warnings
-warnings.simplefilter('default',DeprecationWarning)
-#End compatibility block for Python 3
 
-#External Modules--------------------begin
-import xml.etree.ElementTree as ET
+from __future__ import division, print_function, unicode_literals, absolute_import
+# if in debug mode, activate deprication warnings
+## TODO does this need to be done in all modules, or just this one?
+if __debug__:
+  import warnings
+  warnings.simplefilter('default', DeprecationWarning)
+
 import os
 import sys
-import threading
 import time
+import threading
 import traceback
-#External Modules--------------------end
+import xml.etree.ElementTree as ET
 
 #warning: this needs to be before importing h5py
 os.environ["MV2_ENABLE_AFFINITY"]="0"
 
-frameworkDir = os.path.dirname(os.path.abspath(sys.argv[0]))
+frameworkDir = os.path.dirname(os.path.abspath(__file__))
+
+# library handler is in scripts
+sys.path.append(os.path.join(frameworkDir, '..', "scripts"))
+import library_handler as LH
+sys.path.pop() #remove scripts path for cleanliness
+
 from utils import utils
 import utils.TreeStructure as TS
 utils.find_crow(frameworkDir)
-utils.add_path_recursively(os.path.join(frameworkDir,'contrib','pp'))
+
+if sys.version_info.major == 2:
+  utils.add_path_recursively(os.path.join(frameworkDir,'contrib','pp'))
+else:
+  utils.add_path_recursively(os.path.join(frameworkDir,'contrib','pp3'))
 utils.add_path(os.path.join(frameworkDir,'contrib','AMSC'))
 utils.add_path(os.path.join(frameworkDir,'contrib'))
 #Internal Modules
 from Simulation import Simulation
-from Application import __PySideAvailable
+from Application import __QtAvailable
+from Interaction import Interaction
 #Internal Modules
+
 
 #------------------------------------------------------------- Driver
 def printStatement():
@@ -81,12 +93,12 @@ def printLogo():
   print("""
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-      .---.        .------######       #####     ###   ###  ########  ###    ##
-     /     \  __  /    --###  ###    ###  ###   ###   ###  ###       #####  ##
-    / /     \(  )/    --###  ###    ###   ###  ###   ###  ######    ### #####
-   //////   ' \/ `   --#######     #########  ###   ###  ###       ###  ####
-  //// / // :    :   -###   ###   ###   ###    ######   ####      ###   ###
- // /   /  /`    '---###     ### ###   ###      ##     ########  ###    ##
+      .---.        .------######       #####     ###   ###  ########  ###    ###
+     /     \  __  /    --###  ###    ###  ###   ###   ###  ###       #####  ###
+    / /     \(  )/    --###  ###    ###   ###  ###   ###  ######    ### ######
+   //////   ' \/ `   --#######     #########  ###   ###  ###       ###  #####
+  //// / // :    :   -###   ###   ###   ###    ######   ####      ###   ####
+ // /   /  /`    '---###    ###  ###   ###      ###    ########  ###    ###
 //          //..\\
 ===========UU====UU=============================================================
            '//||\\`
@@ -100,20 +112,33 @@ def checkVersions():
     @ In, None
     @ Out, None
   """
-  sys.path.append(os.path.join(os.path.dirname(frameworkDir),"scripts","TestHarness","testers"))
-  import RavenUtils
-  sys.path.pop() #remove testers path
-  missing,outOfRange,notQA = RavenUtils.checkForMissingModules(False)
-  if len(missing) + len(outOfRange) > 0 and RavenUtils.checkVersions():
-    print("ERROR: too old, too new, or missing raven libraries, not running:")
-    for error in missing + outOfRange + notQA:
-      print(error)
+  # if libraries are not to be checked, we're done here
+  if not LH.checkVersions():
+    return
+  # otherwise, we check for incorrect libraries
+  missing, notQA = LH.checkLibraries()
+  if missing:
+    print('ERROR: Some required Python libraries are missing but required to run RAVEN as configured:')
+    for lib, version in missing:
+      # report the missing library
+      msg = '  -> MISSING: {}'.format(lib)
+      # add the required version if applicable
+      if version is not None:
+        msg += ' version {}'.format(version)
+      print(msg)
+  if notQA:
+    print('ERROR: Some required Python libraries have incorrect versions for running RAVEN as configured:')
+    for lib, found, need in notQA:
+      print('  -> WRONG VERSION: lib "{}" need "{}" but found "{}"'.format(lib, found, need))
+  if missing or notQA:
+    print('Try installing libraries using instructions on RAVEN repository wiki at ' +
+           'https://github.com/idaholab/raven/wiki/Installing_RAVEN_Libraries.')
     sys.exit(-4)
   else:
-    if len(missing) + len(outOfRange) > 0:
-      print("WARNING: not using tested versions of the libraries:")
-      for warning in notQA + missing + outOfRange:
-        print(warning)
+    print('RAVEN Python dependencies located and checked.')
+  # TODO give a warning for missing libs even if skipping check?
+  # -> this is slow, so maybe not.
+
 
 if __name__ == '__main__':
   """This is the main driver for the RAVEN framework"""
@@ -126,7 +151,7 @@ if __name__ == '__main__':
 
   verbosity      = 'all'
   interfaceCheck = False
-  interactive = False
+  interactive = Interaction.No
   workingDir = os.getcwd()
 
   ## Remove duplicate command line options and preserve order so if they try
@@ -135,6 +160,7 @@ if __name__ == '__main__':
 
   itemsToRemove = []
   for item in sys.argv:
+    # I don't think these do anything.  - talbpaul, 2017-10
     if item.lower() in ['silent','quiet','all']:
       verbosity = item.lower()
       itemsToRemove.append(item)
@@ -142,10 +168,16 @@ if __name__ == '__main__':
       interfaceCheck = True
       itemsToRemove.append(item)
     elif item.lower() == 'interactive':
-      if __PySideAvailable:
-        interactive = True
+      if __QtAvailable:
+        interactive = Interaction.Yes
       else:
-        print('\nPySide is not installed, disabling interactive mode.\n')
+        print('Qt is not available, disabling interactive mode.\n')
+      itemsToRemove.append(item)
+    elif item.lower() == 'interactivecheck':
+      if __QtAvailable:
+        interactive = Interaction.Test
+      else:
+        print('Qt is not available, disabling interactive check.\n')
       itemsToRemove.append(item)
 
   ## Now outside of the loop iterating on the object we want to modify, we are
@@ -155,6 +187,7 @@ if __name__ == '__main__':
 
   if interfaceCheck:
     os.environ['RAVENinterfaceCheck'] = 'True'
+    print('Interface CHECK activated!\n')
   else:
     os.environ['RAVENinterfaceCheck'] = 'False'
 
@@ -209,7 +242,8 @@ if __name__ == '__main__':
       sys.exit(1)
 
     # call the function to load the external xml files into the input tree
-    simulation.XMLpreprocess(root,inputFileName=inputFile)
+    cwd = os.path.dirname(os.path.abspath(inputFile))
+    simulation.XMLpreprocess(root,cwd)
     #generate all the components of the simulation
     #Call the function to read and construct each single module of the simulation
     simulation.XMLread(root,runInfoSkip=set(["DefaultInputFile"]),xmlFilename=inputFile)

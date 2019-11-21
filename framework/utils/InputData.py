@@ -18,9 +18,9 @@ Created on 2016-Jan-26
 
 This a library for defining the data used and for reading it in.
 """
-
 from __future__ import division, print_function, unicode_literals, absolute_import
 import xml.etree.ElementTree as ET
+from utils import utils,mathUtils
 
 class InputType(object):
   """
@@ -42,6 +42,8 @@ class InputType(object):
 
     ## Rename the class to something understandable by a developer
     cls.__name__ = str(name+'Spec')
+    # register class name to module (necessary for pickling)
+    globals()[cls.__name__] = cls
 
     cls.name = name
     cls.xmlType = xmlType
@@ -81,6 +83,10 @@ class InputType(object):
     """
     return value
 
+#
+#
+#
+#
 class StringType(InputType):
   """
     A type for arbitrary string data.
@@ -89,6 +95,10 @@ class StringType(InputType):
 
 StringType.createClass("string","xsd:string")
 
+#
+#
+#
+#
 class IntegerType(InputType):
   """
     A type for integer data.
@@ -105,6 +115,10 @@ class IntegerType(InputType):
 
 IntegerType.createClass("integer","xsd:integer")
 
+#
+#
+#
+#
 class FloatType(InputType):
   """
     A type for floating point data.
@@ -121,6 +135,180 @@ class FloatType(InputType):
 
 FloatType.createClass("float","xsd:double")
 
+#
+#
+#
+#
+class FloatOrIntType(InputType):
+  """
+    A type for floating point or integer data.
+  """
+
+  @classmethod
+  def convert(cls, value):
+    """
+      Converts value from string to a float or int.
+      @ In, value, string, the value to convert
+      @ Out, val, float or int, the converted value
+    """
+    try:
+      val = int(value)
+      return val
+    except ValueError:
+      val = float(value)
+      return val
+
+FloatOrIntType.createClass("stringtype","xsd:string")
+
+#
+#
+#
+#
+class InterpretedListType(InputType):
+  """
+    A type for lists with unknown (but consistent) type; could be string, float, etc
+  """
+
+  @classmethod
+  def convert(cls, value):
+    """
+      Converts value from string to a listi with string, integer, or float type.
+      @ In, value, string, the value to convert
+      @ Out, convert, list, the converted value
+    """
+    delim = ',' if ',' in value else None
+    values = list(x.strip() for x in value.split(delim) if x.strip())
+    base = utils.partialEval(values[0])
+    # three possibilities: string, integer, or float
+    if utils.isAString(base):
+      conv = str
+    elif utils.isAnInteger(base):
+      conv = int
+    else: #float
+      conv = float
+    return [conv(x.strip()) for x in values]
+
+#Note, XSD's list type is split by spaces, not commas, so using xsd:string
+InterpretedListType.createClass("stringtype","xsd:string")
+
+
+#
+#
+#
+#
+class StringListType(InputType):
+  """
+    A type for string lists "1, abc, 3" -> ["1","abc","3"]
+  """
+
+  @classmethod
+  def convert(cls, value):
+    """
+      Converts value from string to a string list.
+      @ In, value, string, the value to convert
+      @ Out, convert, list, the converted value
+    """
+    delim = ',' if ',' in value else None
+    return [x.strip() for x in value.split(delim) if x.strip()]
+
+#Note, XSD's list type is split by spaces, not commas, so using xsd:string
+StringListType.createClass("stringtype","xsd:string")
+
+
+#
+#
+#
+#
+class FloatListType(InputType):
+  """
+    A type for float lists "1.1, 2.0, 3.4" -> [1.1, 2.0, 3.4]
+  """
+
+  @classmethod
+  def convert(cls, value):
+    """
+      Converts value from string to a float list.
+      @ In, value, string, the value to convert
+      @ Out, convert, list, the converted value
+    """
+    # prefer commas, but allow spaces, to divide
+    delim = ',' if ',' in value else None
+    return [float(x.strip()) for x in value.split(delim) if x.strip()]
+
+#Note, XSD's list type is split by spaces, not commas, so using xsd:string
+FloatListType.createClass("stringtype","xsd:string")
+
+
+#
+#
+#
+#
+class IntegerListType(InputType):
+  """
+    A type for integer lists "1, 2, 3" -> [1,2,3]
+  """
+
+  @classmethod
+  def convert(cls, value):
+    """
+      Converts value from string to an integer list.
+      @ In, value, string, the value to convert
+      @ Out, convert, list, the converted value
+    """
+    delim = ',' if ',' in value else None
+    return [int(x.strip()) for x in value.split(delim) if x.strip()]
+
+#Note, XSD's list type is split by spaces, not commas, so using xsd:string
+IntegerListType.createClass("stringtype","xsd:string")
+
+#
+#
+#
+#
+class IntegerOrIntegerTupleType(InputType):
+  """
+    A type for integer "1" -> 1
+    or integer tuples "1, 2, 3" -> (1,2,3)
+  """
+
+  @classmethod
+  def convert(cls, value):
+    """
+      Converts value from string to an integer tuple.
+      @ In, value, string, the value to convert
+      @ Out, convertedValue, int or tuple, the converted value
+    """
+    convertedValue = tuple(int(x.strip()) for x in value.split(","))
+    convertedValue = convertedValue[0] if len(convertedValue) == 1 else convertedValue
+    return convertedValue
+
+IntegerOrIntegerTupleType.createClass("stringtype","xsd:string")
+
+#
+#
+#
+#
+class IntegerTupleType(InputType):
+  """
+    A type for integer tuples "1, 2, 3" -> (1,2,3)
+  """
+
+  @classmethod
+  def convert(cls, value):
+    """
+      Converts value from string to an integer tuple.
+      @ In, value, string, the value to convert
+      @ Out, convertedValue, tuple, the converted value
+    """
+    convertedValue = tuple(int(x.strip()) for x in value.split(","))
+    return convertedValue
+
+IntegerTupleType.createClass("stringtype","xsd:string")
+
+#
+#
+#
+#
 class EnumBaseType(InputType):
   """
     A type that allows a set list of strings
@@ -139,11 +327,27 @@ class EnumBaseType(InputType):
 
     ## Rename the class to something understandable by a developer
     cls.__name__ = str(name+'Spec')
+    # register class name to module (necessary for pickling)
+    globals()[cls.__name__] = cls
 
     cls.name = name
     cls.xmlType = xmlType
     cls.needGenerating = True
     cls.enumList = enumList
+
+  @classmethod
+  def convert(cls, value):
+    """
+      Error checking for reading in enum entries
+      @ In, value, object, user-requested enum value
+      @ Out, value, object, adjusted enum value
+    """
+    # TODO is this the right place for checking?
+    ## TODO need to provide the offending XML node somehow ...
+    ## TODO should these by caught and handled by the parseNode?
+    if value not in cls.enumList:
+      raise IOError('Value "{}" unrecognized! Expected one of {}.'.format(value, cls.enumList))
+    return value
 
   @classmethod
   def generateXML(cls, xsdNode):
@@ -160,14 +364,37 @@ class EnumBaseType(InputType):
       enumNode = ET.SubElement(restriction, 'xsd:enumeration')
       enumNode.set('value',enum)
 
+#
+#
+#
+#
+
 class BoolType(EnumBaseType):
   """
     A type that allows True or False
   """
-  pass
 
-BoolType.createClass("bool","boolType",["True","False"])
+  @classmethod
+  def convert(cls, value):
+    """
+      Converts value from string to a bool.
+      @ In, value, string, the value to convert
+      @ Out, convert, bool, the converted value
+    """
+    if value.lower() in utils.stringsThatMeanTrue():
+      return True
+    elif value.lower() in utils.stringsThatMeanFalse():
+      return False
+    else:
+      raise IOError('Unrecognized boolean value: "{}"! Expected "True" or "False", or similar.'.format(value))
 
+boolTypeList = utils.stringsThatMeanTrue() + utils.stringsThatMeanFalse()
+BoolType.createClass("bool","boolType", boolTypeList + [elm.capitalize() for elm in boolTypeList])
+
+#
+#
+#
+#
 class Quantity:
   """
     A class that allows the quantity of a node to be specified.
@@ -178,7 +405,10 @@ class Quantity:
   one = (1,1)
   one_to_infinity = (1,2)
 
-
+#
+#
+#
+#
 class ParameterInput(object):
   """
     This class is for a node for inputing parameters
@@ -188,6 +418,7 @@ class ParameterInput(object):
   subOrder = None
   parameters = {}
   contentType = None
+  strictMode = True #If true, only allow parameters and subnodes that are listed
 
   def __init__(self):
     """
@@ -199,20 +430,24 @@ class ParameterInput(object):
     self.value = ""
 
   @classmethod
-  def createClass(cls, name, ordered=False, contentType=None, baseNode=None):
+  def createClass(cls, name, ordered=False, contentType=None, baseNode=None, strictMode=True):
     """
       Initializes a new class.
       @ In, name, string, The name of the node.
       @ In, ordered, bool, optional, If True, then the subnodes are checked to make sure they are in the same order.
       @ In, contentType, InputType, optional, If not None, set contentType.
       @ In, baseNode, ParameterInput, optional, If not None, copy parameters and subnodes, subOrder, and contentType from baseNode.
+      @ In, strictNode, bool, option, If True, then only allow paramters and subnodes that are specifically mentioned.
       @ Out, None
     """
 
     ## Rename the class to something understandable by a developer
     cls.__name__ = str(name+'Spec')
+    # register class name to module (necessary for pickling)
+    globals()[cls.__name__] = cls
 
     cls.name = name
+    cls.strictMode = strictMode
     if baseNode is not None:
       #Make new copies of data from baseNode
       cls.parameters = dict(baseNode.parameters)
@@ -231,6 +466,15 @@ class ParameterInput(object):
       else:
         cls.subOrder = None
       cls.contentType = contentType
+
+  @classmethod
+  def setStrictMode(cls, strictMode):
+    """
+      Sets how strict the parsing is.  Stricter will throw more IOErrors.
+      @ In, strictNode, bool, option, If True, then only allow paramters and subnodes that are specifically mentioned.
+      @ Out, None
+    """
+    cls.strictMode = strictMode
 
   @classmethod
   def getName(cls):
@@ -252,6 +496,17 @@ class ParameterInput(object):
     cls.parameters[name] = {"type":param_type, "required":required}
 
   @classmethod
+  def removeParam(cls, name, param_type=StringType, required=False):
+    """
+      Adds a direct parameter to this class.  In XML this is an attribute.
+      @ In, name, string, the name of the parameter
+      @ In, param_type, subclass of InputType, optional, that specifies the type of the attribute.
+      @ In, required, bool, optional, if True, this parameter is required.
+      @ Out, None
+    """
+    del cls.parameters[name]
+
+  @classmethod
   def addSub(cls, sub, quantity=Quantity.zero_to_infinity):
     """
       Adds a subnode to this class.
@@ -264,7 +519,50 @@ class ParameterInput(object):
       cls.subOrder.append((sub,quantity))
     elif quantity != Quantity.zero_to_infinity:
       print("ERROR only zero to infinity is supported if Order==False ",
-            sub.getName()," in ",cls.getName())
+           sub.getName()," in ",cls.getName())
+
+  @classmethod
+  def removeSub(cls, sub):
+    """
+      Removes a subnode from this class.
+      @ In, sub, subclass of ParameterInput, the subnode to allow
+      @ Out, None
+    """
+    for have in cls.subs:
+      if have.name == sub:
+        toRemove = have
+        break
+    if cls.subOrder is not None:
+      for entry in cls.subOrder:
+        if entry[0] == toRemove:
+          toRemoveOrd = entry
+          break
+      cls.subOrder.remove(toRemoveOrd)
+    cls.subs.remove(toRemove)
+
+  @classmethod
+  def popSub(cls, subname):
+    """
+      Removes a subnode from this class, and returns it.
+      @ In, subname, string, the name of the subnode to remove
+      @ Out, poppedSub, subclass of ParameterInput, the removed subnode, or None if not found.
+    """
+    poppedSub = None
+    for sub in cls.subs:
+      if sub.getName() == subname:
+        poppedSub = sub
+    if poppedSub is not None:
+      cls.subs.remove(poppedSub)
+    else:
+      return None
+    if cls.subOrder is not None:
+      toRemoveList = []
+      for (sub,quantity) in cls.subOrder:
+        if poppedSub == sub:
+          toRemoveList.append((sub,quantity))
+      for toRemove in toRemoveList:
+        cls.subOrder.remove(toRemove)
+    return poppedSub
 
   @classmethod
   def setContentType(cls, contentType):
@@ -275,35 +573,78 @@ class ParameterInput(object):
     """
     cls.contentType = contentType
 
-  def parseNode(self,node):
+  def parseNode(self,node, errorList = None):
     """
       Parses the xml node and puts the results in self.parameterValues and
       self.subparts and self.value
       @ In, node, xml.etree.ElementTree.Element, The node to parse.
+      @ In, errorList, list, if not None, put errors in errorList instead of throwing IOError.
       @ Out, None
     """
+    def handleError(s):
+      """
+        Handles the error, either by throwing IOError or adding to the errorlist
+        @ In, s, string, string describing error.
+      """
+      # TODO give the offending XML! Use has no idea where they went wrong.
+      if errorList == None:
+        raise IOError(s)
+      else:
+        errorList.append(s)
+
+    # check specs vs tag name
     if node.tag != self.name:
-      print(node.tag,"!=",self.name)
-      raise IOError
-    else:
-      if self.contentType:
+      #should this be an error or a warning? Or even that?
+      #handleError('XML node "{}" != param spec name "{}"'.format(node.tag,self.name))
+      print('InputData: Using param spec "{}" to read XML node "{}.'.format(self.name,node.tag))
+
+    # check content type
+    if self.contentType:
+      try:
         self.value = self.contentType.convert(node.text)
-      else:
-        self.value = node.text
-      for parameter in self.parameters:
-        if parameter in node.attrib:
-          param_type = self.parameters[parameter]["type"]
-          self.parameterValues[parameter] = param_type.convert(node.attrib[parameter])
-      if self.subOrder is not None:
-        subs = [sub[0] for sub in self.subOrder]
-      else:
-        subs = self.subs
-      for sub in subs:
-        subName = sub.getName()
-        for subNode in node.findall(subName):
-          subInstance = sub()
-          subInstance.parseNode(subNode)
-          self.subparts.append(subInstance)
+      except Exception as e:
+        handleError(str(e))
+    else:
+      self.value = node.text
+
+    # check attributes
+    for parameter in self.parameters:
+      if parameter in node.attrib:
+        param_type = self.parameters[parameter]["type"]
+        self.parameterValues[parameter] = param_type.convert(node.attrib[parameter])
+      elif self.parameters[parameter]["required"]:
+        handleError("Required parameter " + parameter + " not in " + node.tag)
+    # if strict, force parameter checking
+    if self.strictMode:
+      for parameter in node.attrib:
+        if not parameter in self.parameters:
+          handleError(parameter + " not in attributes and strict mode on in "+node.tag)
+
+    # handle ordering of subnodes
+    if self.subOrder is not None:
+      subs = [sub[0] for sub in self.subOrder]
+    else:
+      subs = self.subs
+    # read in subnodes
+    subNames = set()
+    for sub in subs:
+      subName = sub.getName()
+      subNames.add(subName)
+      for subNode in node.findall(subName):
+        subInstance = sub()
+        subInstance.parseNode(subNode, errorList)
+        self.subparts.append(subInstance)
+    if self.strictMode:
+      nodeNames = set([child.tag for child in node])
+      if nodeNames != subNames:
+        # there are mismatches
+        unknownChilds = list(nodeNames - subNames)
+        if unknownChilds:
+          handleError('Childs "[{}]" not allowed as sub-elements of "{}"'.format(", ".join(unknownChilds),node.tag))
+        #TODO: keep this for the future. We need to implement in the InputData a way to set some nodes to be required
+        #missingChilds =  list(subNames - nodeNames)
+        #if missingChilds:
+        #  handleError('Not found Childs "[{}]" as sub-elements of "{}"'.format(",".join(missingChilds),node.tag))
 
   def findFirst(self, name):
     """
@@ -317,6 +658,14 @@ class ParameterInput(object):
       if sub.getName() == name:
         return sub
     return None
+
+  def findAll(self, name):
+    """
+      Finds all the subparts with name.
+      @ In, name, string, the name of the node to search for
+      @ Out, findAll, list, matching nodes (may be empty)
+    """
+    return list(sub for sub in self.subparts if sub.getName() == name)
 
   @classmethod
   def generateXSD(cls, xsdNode, definedDict):
@@ -432,3 +781,9 @@ def createXSD(outerElement):
   return outside
 
 
+class RavenBase(ParameterInput):
+  """
+    This can be used as a base class for things that inherit from BaseType
+  """
+RavenBase.createClass("RavenBase", baseNode=None)
+RavenBase.addParam("verbosity") #XXX should be enumeration

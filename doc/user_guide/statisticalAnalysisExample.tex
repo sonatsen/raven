@@ -1,0 +1,159 @@
+\section{Statistical Analysis through RAVEN}
+\label{sec:SAraven}
+In order to perform a complete analysis of a system under uncertainties,
+it is crucial to be able to compute all the statistical moments of one or even multiple
+FOMs. In addition, it is essential to identify the correlation
+among different FOMs toward a specific input space.
+
+RAVEN is able to compute the most important statistical moments:
+such as:
+\begin{enumerate}
+  \item \textit{Expected Value}
+  \item \textit{Standard Deviation}
+  \item \textit{Variance}
+  \item \textit{variationCoefficient}
+  \item \textit{Skewness}
+  \item \textit{Kurtosis}
+  \item \textit{Median}
+  \item \textit{Percentile}.
+\end{enumerate}
+In addition, RAVEN fully supports the computation of all of the statistical moments defined to
+``measure'' the correlation among variables/parameters/FOMs:
+\begin{enumerate}
+  \item \textit{Covariance matrix}
+  \item \textit{Normalized Sensitivity matrix}
+  \item \textit{Variance Dependent Sensitivity matrix}
+  \item \textit{Sensitivity matrix}
+  \item \textit{Pearson matrix}.
+\end{enumerate}
+The goals of this section is to show how to:
+ \begin{enumerate}
+   \item Set up a sampling strategy to perform a final statistical analysis
+   perturbing a driven code
+   \item Compute all the statistical moments and correlation/covariance
+   metrics.
+\end{enumerate}
+In order to accomplish these tasks, the following RAVEN \textbf{Entities} (XML blocks in the input files) need to be defined:
+\begin{enumerate}
+   \item \textbf{\textit{RunInfo}}:
+     \xmlExample{framework/user_guide/StatisticalAnalysis/statisticalAnalysis.xml}{RunInfo}
+   As shown in the other examples, the \textit{RunInfo} \textbf{Entity} is intended  to set up the desired analysis. The number of steps specified in (\xmlNode{Sequence}) are sequentially run, two steps in this specific case, using the number of processors assigned in (\xmlNode{batchSize}).
+   \\In the first step, the original physical model is sampled. The obtained results are  analyzed with the Statistical Post-Processor.
+   \item \textbf{\textit{Models}}:
+     \xmlExample{framework/user_guide/StatisticalAnalysis/statisticalAnalysis.xml}{Models}
+ The goal of this example is to show how the
+ principal statistical FOMs can be computed through RAVEN.
+ \\We use an External model and specify a Post-Processor model (BasicStatistics). The post-process step is performed on all the output FOMs used in this example ($r and t$).
+   \item \textbf{\textit{Distributions}}:
+     \xmlExample{framework/user_guide/StatisticalAnalysis/statisticalAnalysis.xml}{Distributions}
+  In the Distributions XML section, the stochastic model for the
+  uncertainties are reported. In this case 2 distributions are defined:
+  \begin{itemize}
+    \item $vel\_dist \sim \mathbb{N}(30,5)$, used to model the uncertainties
+    associated with  the \textit{velocity};
+    \item  $angle\_dist \sim \mathbb{U}(5,85)$,  used to
+    model the uncertainties associated with the \textit{angle}.
+  \end{itemize}
+   \item \textbf{\textit{Samplers}}:
+     \xmlExample{framework/user_guide/StatisticalAnalysis/statisticalAnalysis.xml}{Samplers}
+  In order to obtain the data-set on which the data mining algorithms are going to be applied, a \textit{MonteCarlo} sampling approach is employed here.
+   \item \textbf{\textit{DataObjects}}:
+     \xmlExample{framework/user_guide/StatisticalAnalysis/statisticalAnalysis.xml}{DataObjects}
+  In this block, three \textit{DataObjects} are defined:
+  1) PointSet named ``samples'' used to collect the final outcomes of
+  the code,
+  2) PointSet named ``dummyIN'' used as a placeholder for the \textit{Multirun} step,
+  3) HistorySet named ``histories'' in which the full time responses of the
+  variables $x,y,t$ are going to be stored.
+
+   \item \textbf{\textit{Steps}}:
+     \xmlExample{framework/user_guide/StatisticalAnalysis/statisticalAnalysis.xml}{Steps}
+
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   Finally, all the previously defined \textbf{Entities} can be combined in
+   the \xmlNode{Steps} block. As inferable,
+   2 \xmlNode{Steps} have been inputted:
+   \begin{itemize}
+     \item \xmlNode{MultiRun} named ``sampleMC'', used to run the
+     multiple
+     instances of the driven code and
+     collect the outputs in the two \textit{DataObjects}. As it can be
+     seen, the \xmlNode{Sampler} is inputted to communicate to the
+     \textit{Step} that the driven code needs to
+     be perturbed through the MonteCarlo sampling strategy.
+     \item \xmlNode{PostProcess} named ``statisticalAnalysisMC'', used
+     compute all the statistical moments and FOMs based on the
+     data obtained through the sampling strategy. As it can be noticed,
+     the \xmlNode{Output} of the ``sampleMC'' \textit{Step} is the
+     \xmlNode{Input} of the ``statisticalAnalysisMC''  \textit{Step}.
+   \end{itemize}
+\end{enumerate}
+
+Tables \ref{ScalarMoments}-\ref{SensitivityComputed} show all the results of the \textit{PostProcess}
+step.
+
+
+\begin{table}[h!]
+\centering
+\caption{Computed Moments and Cumulants}
+\label{ScalarMoments}
+\begin{tabular}{|c|c|c|}
+\hline
+{\ul \textit{\textbf{Computed Quantities}}} & \textbf{r} & \textbf{t} \\ \hline
+\textit{expected value}                     & 65.88   & 3.94   \\ \hline
+\textit{median}                             & 61.74   & 4.12   \\ \hline
+\textit{variance}                           & 1022.01 & 3.53   \\ \hline
+\textit{sigma}                              & 31.97   & 1.89  \\ \hline
+\textit{variation coefficient}              & 0.48    & 0.48   \\ \hline
+\textit{skewness}                           & 0.55    & -0.03  \\ \hline
+\textit{kurtosis}                           & -0.01   & -0.96  \\ \hline
+\textit{percentile 5\%}                     & 20.21   & 0.85   \\ \hline
+\textit{percentile 95\%}                    & 122.83  & 6.90   \\ \hline
+\end{tabular}
+\end{table}
+\begin{table}[h!]
+\centering
+\caption{Covariance matrix.}
+\label{covarianceComputed}
+\begin{tabular}{|c|c|c|}
+\hline
+{\ul \textit{\textbf{Covariance}}} & \textbf{r} & \textbf{t} \\ \hline
+\textit{velocity}                     & 95.36   & 3.29   \\ \hline
+\textit{angle}                        & 25.29   & 40.42   \\ \hline
+\end{tabular}
+\end{table}
+\begin{table}[h!]
+\centering
+\caption{Correlation matrix}
+\label{pearsonComputed}
+\begin{tabular}{|c|c|c|}
+\hline
+{\ul \textit{\textbf{Correlation}}} & \textbf{r} & \textbf{t} \\ \hline
+\textit{velocity}                     & 0.61   & 0.36   \\ \hline
+\textit{angle}                        & 0.03   & 0.92   \\ \hline
+\end{tabular}
+\end{table}
+\begin{table}[h!]
+\centering
+\caption{Variance Dependent Sensitivity matrix}
+\label{VarDepSensitivityComputed}
+\begin{tabular}{|c|c|c|}
+\hline
+{\ul \textit{\textbf{Variance Sensitivity}}} & \textbf{r} & \textbf{t} \\ \hline
+\textit{velocity}                     & -1.69   & 0.08   \\ \hline
+\textit{angle}                        & -3.31   & 0.07   \\ \hline
+\end{tabular}
+\end{table}
+\begin{table}[h!]
+\centering
+\caption{Sensitivity matrix}
+\label{SensitivityComputed}
+\begin{tabular}{|c|c|c|}
+\hline
+{\ul \textit{\textbf{Sensitivity (I/O)}}} & \textbf{r} & \textbf{t} \\ \hline
+\textit{velocity}                     & 3.95   & 0.12   \\ \hline
+\textit{angle}                        & 0.01   & 0.07   \\ \hline
+\end{tabular}
+\end{table}
+

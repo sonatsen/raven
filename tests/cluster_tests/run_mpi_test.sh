@@ -2,6 +2,6 @@
 
 cd $PBS_O_WORKDIR/
 
-module load raven-devel-gcc
+module load raven-devel
 
-python  ../../framework/Driver.py test_mpi.xml
+../../raven_framework test_mpi.xml

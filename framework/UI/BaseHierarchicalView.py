@@ -21,9 +21,13 @@ from __future__ import division, print_function, absolute_import
 import warnings
 warnings.simplefilter('default',DeprecationWarning)
 #End compatibility block for Python 3
+try:
+  from PySide.QtCore import QSize
+  from PySide.QtGui import QWidget
+except ImportError as e:
+  from PySide2.QtCore import QSize
+  from PySide2.QtWidgets import QWidget
 
-from PySide.QtCore import QSize
-from PySide.QtGui import QWidget
 
 from .ZoomableGraphicsView import ZoomableGraphicsView
 
@@ -37,11 +41,11 @@ class BaseHierarchicalView(QWidget):
         @ In, mainWindow, an optional QWidget that will be the parent of this widget
         @ In, title, an optional string specifying the title of this widget.
     """
-
     ## This is a stupid hack around the problem of multiple inheritance, maybe
     ## I should rethink the class hierarchy here?
-    if not isinstance(self, ZoomableGraphicsView):
-      super(BaseHierarchicalView, self).__init__(mainWindow)
+    #if not isinstance(self, ZoomableGraphicsView):
+    #  super(BaseHierarchicalView, self).__init__(mainWindow)
+    QWidget.__init__(self, mainWindow)
 
     if title is None:
       self.setWindowTitle(self.__class__.__name__)
@@ -69,9 +73,9 @@ class BaseHierarchicalView(QWidget):
         item = layout.takeAt(0)
         widget = item.widget()
         if widget is not None:
-            widget.deleteLater()
+          widget.deleteLater()
         else:
-            self.clearLayout(item.layout())
+          self.clearLayout(item.layout())
 
 
   def updateScene(self):
@@ -100,3 +104,27 @@ class BaseHierarchicalView(QWidget):
       @ Out, None
     """
     self.updateScene()
+
+  def selectionChanged(self):
+    """
+      This callback will ensure the UI is appropriately updated when a user
+      triggers a change to the selected data of the hierarchy
+      @ In, None
+      @ Out, None
+    """
+    self.updateScene()
+
+  def test(self):
+    """
+        A test function for performing operations on this class that need to be
+        automatically tested such as simulating mouse and keyboard events, and
+        other internal operations.  For this class in particular, we will test:
+        - Retrieving the size hint of this view.
+        - A generic update
+        - Clearing the layout of this view.
+        @ In, None
+        @ Out, None
+    """
+    sizeHint = BaseHierarchicalView.sizeHint(self)
+    BaseHierarchicalView.updateScene(self)
+    BaseHierarchicalView.clearLayout(self, self.layout())

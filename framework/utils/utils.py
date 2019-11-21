@@ -20,10 +20,11 @@ from __future__ import division, print_function, absolute_import
 import warnings
 warnings.simplefilter('default',DeprecationWarning)
 
-
-#Do not import numpy or scipy or other libraries that are not
-# built into python.  Otherwise the import can fail, and since utils
-# are used by --library-report, this can cause diagnostic messages to fail.
+# *************************** NOTE FOR DEVELOPERS ***************************
+# Do not import numpy or scipy or other libraries that are not              *
+# built into python.  Otherwise the import can fail, and since utils        *
+# are used by --library-report, this can cause diagnostic messages to fail. *
+# ***************************************************************************
 import bisect
 import sys, os, errno
 import inspect
@@ -31,7 +32,9 @@ import subprocess
 import platform
 import copy
 import numpy
+import six
 from difflib import SequenceMatcher
+import importlib
 
 class Object(object):
   """
@@ -45,6 +48,22 @@ class NoMoreSamplesNeeded(GeneratorExit):
     Custom RAVEN error available for use in the framework.
   """
   pass
+
+class byPass(object):
+  """
+    This is dummy class that is needed to emulate the "dataObject" resetData method
+  """
+  def __init__(self):
+    self.name = ""
+
+  def resetData(self):
+    """
+      This is dummy method that is needed to emulate the "dataObject" resetData method
+      @ In, None
+      @ Out, None
+    """
+    pass
+
 # ID separator that should be used cross the code when combined ids need to be assembled.
 # For example, when the "EnsembleModel" creates new  ``prefix`` ids for sub-models
 __idSeparator = "++"
@@ -58,8 +77,10 @@ def identifyIfExternalModelExists(caller, moduleIn, workingDir):
     @ In, workingDir, string, the path of the working directory
     @ Out, (moduleToLoad, fileName), tuple, a tuple containing the module to load (that should be used in method importFromPath) and the filename (no path)
   """
-  if moduleIn.endswith('.py') : moduleToLoadString = moduleIn[:-3]
-  else                        : moduleToLoadString = moduleIn
+  if moduleIn.endswith('.py'):
+    moduleToLoadString = moduleIn[:-3]
+  else:
+    moduleToLoadString = moduleIn
   workingDirModule = os.path.abspath(os.path.join(workingDir,moduleToLoadString))
   if os.path.exists(workingDirModule+".py"):
     moduleToLoadString = workingDirModule
@@ -69,11 +90,13 @@ def identifyIfExternalModelExists(caller, moduleIn, workingDir):
     path, filename = os.path.split(moduleToLoadString)
     if (path != ''):
       abspath = os.path.abspath(path)
-      if '~' in abspath:abspath = os.path.expanduser(abspath)
+      if '~' in abspath:
+        abspath = os.path.expanduser(abspath)
       if os.path.exists(abspath):
         caller.raiseAWarning('file '+moduleToLoadString+' should be relative to working directory. Working directory: '+workingDir+' Module expected at '+abspath)
         os.sys.path.append(abspath)
-      else: caller.raiseAnError(IOError,'The path provided for the' + caller.type + ' named '+ caller.name +' does not exist!!! Got: ' + abspath + ' and ' + workingDirModule)
+      else:
+        caller.raiseAnError(IOError,'The path provided for the' + caller.type + ' named '+ caller.name +' does not exist!!! Got: ' + abspath + ' and ' + workingDirModule)
   return moduleToLoadString, filename
 
 def checkIfUnknowElementsinList(referenceList,listToTest):
@@ -85,7 +108,8 @@ def checkIfUnknowElementsinList(referenceList,listToTest):
   """
   unknownElements = []
   for elem in listToTest:
-    if elem not in referenceList: unknownElements.append(elem)
+    if elem not in referenceList:
+      unknownElements.append(elem)
   return unknownElements
 
 def checkIfPathAreAccessedByAnotherProgram(pathname, timelapse = 10.0):
@@ -100,7 +124,8 @@ def checkIfPathAreAccessedByAnotherProgram(pathname, timelapse = 10.0):
   import stat
   import time
   mode = os.stat(pathname).st_mode
-  if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)): raise Exception(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag('ERROR') + '->  path '+pathname+ ' is neither a file nor a dir!')
+  if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+    raise Exception(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag('ERROR') + '->  path '+pathname+ ' is neither a file nor a dir!')
   boolReturn = abs(os.stat(pathname).st_mtime - time.time()) < timelapse
   return boolReturn
 
@@ -122,7 +147,8 @@ def removeFile(pathAndFileName):
     @ In, pathAndFileName, string, string containing the path and filename
     @ Out, None
   """
-  if os.path.isfile(pathAndFileName): os.remove(pathAndFileName)
+  if os.path.isfile(pathAndFileName):
+    os.remove(pathAndFileName)
 
 def returnImportModuleString(obj,moduleOnly=False):
   """
@@ -136,13 +162,18 @@ def returnImportModuleString(obj,moduleOnly=False):
   mods = []
   for key, value in dict(inspect.getmembers(obj)).items():
     if moduleOnly:
-      if not inspect.ismodule(value): continue
+      if not inspect.ismodule(value):
+        continue
     else:
-      if not (inspect.ismodule(value) or inspect.ismethod(value)): continue
+      if not (inspect.ismodule(value) or inspect.ismethod(value)):
+        continue
     if key != value.__name__:
-      if value.__name__.split(".")[-1] != key: mods.append(str('import ' + value.__name__ + ' as '+ key))
-      else                                   : mods.append(str('from ' + '.'.join(value.__name__.split(".")[:-1]) + ' import '+ key))
-    else: mods.append(str(key))
+      if value.__name__.split(".")[-1] != key:
+        mods.append(str('import ' + value.__name__ + ' as '+ key))
+      else:
+        mods.append(str('from ' + '.'.join(value.__name__.split(".")[:-1]) + ' import '+ key))
+    else:
+      mods.append(str(key))
   return mods
 
 def getPrintTagLenght():
@@ -181,12 +212,17 @@ def convertMultipleToBytes(sizeString):
     @ In, sizeString, string, string that needs to be converted in bytes
     @ Out, convertMultipleToBytes, integer, the number of bytes
   """
-  if   'mb' in sizeString: return int(sizeString.replace("mb",""))*10**6
-  elif 'kb' in sizeString: return int(sizeString.replace("kb",""))*10**3
-  elif 'gb' in sizeString: return int(sizeString.replace("gb",""))*10**9
+  if   'mb' in sizeString:
+    return int(sizeString.replace("mb",""))*10**6
+  elif 'kb' in sizeString:
+    return int(sizeString.replace("kb",""))*10**3
+  elif 'gb' in sizeString:
+    return int(sizeString.replace("gb",""))*10**9
   else:
-    try   : return int(sizeString)
-    except: raise IOError(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag('ERROR') + '->  can not understand how to convert expression '+str(sizeString)+' to number of bytes. Accepted Mb,Gb,Kb (no case sentive)!')
+    try:
+      return int(sizeString)
+    except:
+      raise IOError(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag('ERROR') + '->  can not understand how to convert expression '+str(sizeString)+' to number of bytes. Accepted Mb,Gb,Kb (no case sentive)!')
 
 def stringsThatMeanTrue():
   """
@@ -240,15 +276,22 @@ def interpretBoolean(inArg):
     @ In, inArg, object, object to convert
     @ Out, interpretedObject, bool, the interpreted boolean
   """
-  if type(inArg).__name__ == "bool": return inArg
+  if type(inArg).__name__ == "bool":
+    return inArg
   elif type(inArg).__name__ == "integer":
-    if inArg == 0: return False
-    else         : return True
+    if inArg == 0:
+      return False
+    else:
+      return True
   elif type(inArg).__name__ in ['str','bytes','unicode']:
-      if inArg.lower().strip() in stringsThatMeanTrue()   : return True
-      elif inArg.lower().strip() in stringsThatMeanFalse(): return False
-      else                                                : raise Exception(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag("ERROR") + '-> can not convert string to boolean in method interpretBoolean!!!!')
-  else: raise Exception(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag("ERROR") + '-> type unknown in method interpretBoolean. Got' + type(inArg).__name__)
+    if inArg.lower().strip() in stringsThatMeanTrue():
+      return True
+    elif inArg.lower().strip() in stringsThatMeanFalse():
+      return False
+    else:
+      raise Exception(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag("ERROR") + '-> can not convert string to boolean in method interpretBoolean!!!!')
+  else:
+    raise Exception(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag("ERROR") + '-> type unknown in method interpretBoolean. Got' + type(inArg).__name__)
 
 def isClose(f1, f2, relTolerance=1e-14, absTolerance=0.0):
   """
@@ -273,14 +316,16 @@ def compare(s1,s2,relTolerance = 1e-14):
     @ Out, response, bool, the boolean response (True if s1==s2, False otherwise)
   """
   w1, w2 = floatConversion(s1), floatConversion(s2)
-  if   type(w1) == type(w2) and type(w1) != float: return s1 == s2
+  if   type(w1) == type(w2) and type(w1) != float:
+    return s1 == s2
   elif type(w1) == type(w2) and type(w1) == float:
     from utils import mathUtils
     return mathUtils.compareFloats(w1,w2,relTolerance)
   elif type(w1) != type(w2) and type(w1) in [float,int] and type(w2) in [float,int]:
     w1, w2 = float(w1), float(w2)
     return compare(w1,w2)
-  else: return (w1 == w2)
+  else:
+    return (w1 == w2)
 
 def intConversion (s):
   """
@@ -289,8 +334,10 @@ def intConversion (s):
     @ In, s, string,  string to be converted
     @ Out, response, int or None, the casted value
   """
-  try              : return int(s)
-  except ValueError: return None
+  try:
+    return int(s)
+  except (ValueError,TypeError) as e:
+    return None
 
 def floatConversion (s):
   """
@@ -299,8 +346,10 @@ def floatConversion (s):
     @ In, s, string,  string to be converted
     @ Out, response, float or None, the casted value
   """
-  try              : return float(s)
-  except ValueError: return None
+  try:
+    return float(s)
+  except (ValueError,TypeError) as e:
+    return None
 
 def partialEval(s):
   """
@@ -311,9 +360,12 @@ def partialEval(s):
     @ Out, response, float or int or string, the casted value
   """
   evalS = intConversion(s)
-  if evalS is None: evalS = floatConversion(s)
-  if evalS is None: return s
-  else            : return evalS
+  if evalS is None:
+    evalS = floatConversion(s)
+  if evalS is None:
+    return s
+  else:
+    return evalS
 
 def toString(s):
   """
@@ -321,8 +373,10 @@ def toString(s):
     @ In, s, string,  string to be converted
     @ Out, response, string, the casted value
   """
-  if type(s) == type(""): return s
-  else                  : return s.decode()
+  if type(s) == type(""):
+    return s
+  else:
+    return s.decode()
 
 def toBytes(s):
   """
@@ -330,9 +384,100 @@ def toBytes(s):
     @ In, s, string,  string to be converted
     @ Out, response, bytes, the casted value
   """
-  if type(s) == type("")                            : return s.encode()
-  elif type(s).__name__ in ['unicode','str','bytes']: return bytes(s)
-  else                                              : return s
+  if type(s) == type(""):
+    return s.encode()
+  elif type(s).__name__ in ['unicode','str','bytes']:
+    return bytes(s)
+  else:
+    return s
+
+def isSingleValued(val, nanOk=True, zeroDOk=True):
+  """
+    Determine if a single-entry value (by traditional standards).
+    Single entries include strings, numbers, NaN, inf, None
+    NOTE that Python usually considers strings as arrays of characters.  Raven doesn't benefit from this definition.
+    @ In, val, object, check
+    @ In, nanOk, bool, optional, if True then NaN and inf are acceptable
+    @ In, zeroDOk, bool, optional, if True then a zero-d numpy array with a single-valued entry is A-OK
+    @ Out, isSingleValued, bool, result
+  """
+  # TODO most efficient order for checking?
+  if zeroDOk:
+    # if a zero-d numpy array, then technically it's single-valued, but we need to get into the array
+    val = npZeroDToEntry(val)
+  return isAFloatOrInt(val,nanOk=nanOk) or isABoolean(val) or isAString(val) or (val is None)
+
+def isAString(val):
+  """
+    Determine if a string value (by traditional standards).
+    @ In, val, object, check
+    @ Out, isAString, bool, result
+  """
+  return isinstance(val, six.string_types)
+
+def isAFloatOrInt(val,nanOk=True):
+  """
+    Determine if a float or integer value
+    Should be faster than checking (isAFloat || isAnInteger) due to checking against numpy.number
+    @ In, val, object, check
+    @ In, nanOk, bool, optional, if True then NaN and inf are acceptable
+    @ Out, isAFloatOrInt, bool, result
+  """
+  return isAnInteger(val,nanOk) or  isAFloat(val,nanOk)
+
+def isAFloat(val,nanOk=True):
+  """
+    Determine if a float value (by traditional standards).
+    @ In, val, object, check
+    @ In, nanOk, bool, optional, if True then NaN and inf are acceptable
+    @ Out, isAFloat, bool, result
+  """
+  if isinstance(val,(float,numpy.number)):
+    # exclude ints, which are numpy.number
+    if isAnInteger(val):
+      return False
+    # numpy.float32 (or 16) is niether a float nor a numpy.float (it is a numpy.number)
+    if nanOk:
+      return True
+    elif val not in [numpy.nan,numpy.inf]:
+      return True
+  return False
+
+def isAnInteger(val,nanOk=False):
+  """
+    Determine if an integer value (by traditional standards).
+    @ In, val, object, check
+    @ In, nanOk, bool, optional, if True then NaN and inf are acceptable
+    @ Out, isAnInteger, bool, result
+  """
+  if isinstance(val,six.integer_types) or isinstance(val,numpy.integer):
+    # exclude booleans
+    if isABoolean(val):
+      return False
+    return True
+  # also include inf and nan, if requested
+  if nanOk and isinstance(val,float) and val in [numpy.nan,numpy.inf]:
+    return True
+  return False
+
+def isABoolean(val):
+  """
+    Determine if a boolean value (by traditional standards).
+    @ In, val, object, check
+    @ Out, isABoolean, bool, result
+  """
+  return isinstance(val,(bool,numpy.bool_))
+
+def npZeroDToEntry(a):
+  """
+    Cracks the shell of the numpy array and gets the sweet sweet value inside
+    @ In, a, object, thing to crack open (might be anything, hopefully a zero-d numpy array)
+    @ Out, a, object, thing that was inside the thing in the first place
+  """
+  if isinstance(a, numpy.ndarray) and a.shape == ():
+    # make the thing we're checking the thing inside to the numpy array
+    a = a.item()
+  return a
 
 def toBytesIterative(s):
   """
@@ -341,13 +486,17 @@ def toBytesIterative(s):
     @ In, s, object,  object whose content needs to be converted
     @ Out, response, object, a copy of the object in which the string-compatible has been converted
   """
-  if type(s) == list: return [toBytes(x) for x in s]
+  if type(s) == list:
+    return [toBytes(x) for x in s]
   elif type(s) == dict:
-    if len(s.keys()) == 0: return None
+    if len(s) == 0:
+      return None
     tempdict = {}
-    for key,value in s.items(): tempdict[toBytes(key)] = toBytesIterative(value)
+    for key,value in s.items():
+      tempdict[toBytes(key)] = toBytesIterative(value)
     return tempdict
-  else: return toBytes(s)
+  else:
+    return toBytes(s)
 
 def toListFromNumpyOrC1array(array):
   """
@@ -369,13 +518,17 @@ def toListFromNumpyOrC1arrayIterative(array):
     @ In, array, object,  object whose content needs to be converted
     @ Out, response, object, a copy of the object in which the string-compatible has been converted
   """
-  if type(array) == list: return [toListFromNumpyOrC1array(x) for x in array]
+  if type(array) == list:
+    return [toListFromNumpyOrC1array(x) for x in array]
   elif type(array) == dict:
-    if len(array.keys()) == 0: return None
+    if len(array.keys()) == 0:
+      return None
     tempdict = {}
-    for key,value in array.items(): tempdict[toBytes(key)] = toListFromNumpyOrC1arrayIterative(value)
+    for key,value in array.items():
+      tempdict[toBytes(key)] = toListFromNumpyOrC1arrayIterative(value)
     return tempdict
-  else: return toBytes(array)
+  else:
+    return toBytes(array)
 
 def toStrish(s):
   """
@@ -395,8 +548,10 @@ def keyIn(dictionary,key):
     Method that return the key or toBytes key if in, else returns None.
     Use like
     inKey = keyIn(adict,key)
-    if inKey is not None: foo = adict[inKey]
-    else                : pass #not found
+    if inKey is not None:
+      foo = adict[inKey]
+    else:
+      pass #not found
     @ In, dictionary, dict, the dictionary whose key needs to be returned
     @ Out, response, str or bytes, the key (converted in bytes if needed)
   """
@@ -404,8 +559,10 @@ def keyIn(dictionary,key):
     return key
   else:
     bin_key = toBytes(key)
-    if bin_key in dictionary: return bin_key
-    else                    : return None
+    if bin_key in dictionary:
+      return bin_key
+    else:
+      return None
 
 def first(c):
   """
@@ -432,7 +589,8 @@ def importFromPath(filename, printImporting = True):
     @ In, printImporting, bool, True if information about the importing needs to be printed out
     @ Out, importedModule, module, the imported module
   """
-  if printImporting: print('(            ) '+UreturnPrintTag('UTILS') + ': '+UreturnPrintPostTag('Message')+ '      -> importing module '+ filename)
+  if printImporting:
+    print('(            ) '+UreturnPrintTag('UTILS') + ': '+UreturnPrintPostTag('Message')+ '      -> importing module '+ filename)
   import imp, os.path
   try:
     (path, name) = os.path.split(filename)
@@ -451,7 +609,8 @@ def index(a, x):
     @ Out, i, int, the index of the leftmost value exactly equal to x
   """
   i = bisect.bisect_left(a, x)
-  if i != len(a) and a[i] == x: return i
+  if i != len(a) and a[i] == x:
+    return i
   return None
 
 def find_lt(a, x):
@@ -462,7 +621,8 @@ def find_lt(a, x):
     @ Out, i, int, the index of the Find rightmost value less than x
   """
   i = bisect.bisect_left(a, x)
-  if i: return a[i-1],i-1
+  if i:
+    return a[i-1],i-1
   return None,None
 
 def find_le_index(a,x):
@@ -473,7 +633,8 @@ def find_le_index(a,x):
     @ Out, i, int, the index of the rightmost value less than or equal to x
   """
   i = bisect.bisect_right(a, x)
-  if i: return i
+  if i:
+    return i
   return None
 
 def find_le(a, x):
@@ -484,7 +645,8 @@ def find_le(a, x):
     @ Out, i, tuple, tuple[0] -> the rightmost value less than or equal to x, tuple[1] -> index
   """
   i = bisect.bisect_right(a, x)
-  if i: return a[i-1],i-1
+  if i:
+    return a[i-1],i-1
   return None,None
 
 def find_gt(a, x):
@@ -495,7 +657,8 @@ def find_gt(a, x):
     @ Out, i, tuple, tuple[0] -> the leftmost value greater than x, tuple[1] -> index
   """
   i = bisect.bisect_right(a, x)
-  if i != len(a): return a[i],i
+  if i != len(a):
+    return a[i],i
   return None,None
 
 def find_ge(a, x):
@@ -506,7 +669,8 @@ def find_ge(a, x):
     @ Out, i, tuple, tuple[0] ->leftmost item greater than or equal to x, tuple[1] -> index
   """
   i = bisect.bisect_left(a, x)
-  if i != len(a): return a[i],i
+  if i != len(a):
+    return a[i],i
   return None,None
 
 def getRelativeSortedListEntry(sortedList,value,tol=1e-15):
@@ -530,7 +694,7 @@ def getRelativeSortedListEntry(sortedList,value,tol=1e-15):
   #if "value" is smallest value in list...
   if index == 0:
     if len(sortedList)>0:
-      #check if current first matches
+    #check if current first matches
       if compareFloats(sortedList[0], value, tol=tol):
         match = sortedList[0]
         match_index = index
@@ -587,79 +751,6 @@ def metaclass_insert(metaclass,*baseClasses):
   """
   namespace={}
   return metaclass("NewMiddleClass",baseClasses,namespace)
-
-def interpolateFunction(x,y,option,z=None,returnCoordinate=False):
-  """
-    Method to interpolate 2D/3D points
-    @ In, x, ndarray or cached_ndarray, the array of x coordinates
-    @ In, y, ndarray or cached_ndarray, the array of y coordinates
-    @ In, z, ndarray or cached_ndarray, optional, the array of z coordinates
-    @ In, returnCoordinate, boolean, optional, true if the new coordinates need to be returned
-    @ Out, i, ndarray or cached_ndarray or tuple, the interpolated values
-  """
-  options = copy.copy(option)
-  if x.size <= 2:
-    xi = x
-  else:
-    xi = np.linspace(x.min(),x.max(),int(options['interpPointsX']))
-  if z != None:
-    if y.size <= 2:
-      yi = y
-    else:
-      yi = np.linspace(y.min(),y.max(),int(options['interpPointsY']))
-    xig, yig = np.meshgrid(xi, yi)
-    try:
-      if ['nearest','linear','cubic'].count(options['interpolationType']) > 0 or z.size <= 3:
-        if options['interpolationType'] != 'nearest' and z.size > 3:
-          zi = griddata((x,y), z, (xi[None,:], yi[:,None]), method=options['interpolationType'])
-        else:
-          zi = griddata((x,y), z, (xi[None,:], yi[:,None]), method='nearest')
-      else:
-        rbf = Rbf(x,y,z,function=str(str(options['interpolationType']).replace('Rbf', '')), epsilon=int(options.pop('epsilon',2)), smooth=float(options.pop('smooth',0.0)))
-        zi  = rbf(xig, yig)
-    except Exception as ae:
-      if 'interpolationTypeBackUp' in options.keys():
-        print(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag('Warning') + '->   The interpolation process failed with error : ' + str(ae) + '.The STREAM MANAGER will try to use the BackUp interpolation type '+ options['interpolationTypeBackUp'])
-        options['interpolationTypeBackUp'] = options.pop('interpolationTypeBackUp')
-        zi = interpolateFunction(x,y,z,options)
-      else:
-        raise Exception(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag('ERROR') + '-> Interpolation failed with error: ' +  str(ae))
-    if returnCoordinate: return xig,yig,zi
-    else               : return zi
-  else:
-    try:
-      if ['nearest','linear','cubic'].count(options['interpolationType']) > 0 or y.size <= 3:
-        if options['interpolationType'] != 'nearest' and y.size > 3: yi = griddata((x), y, (xi[:]), method=options['interpolationType'])
-        else: yi = griddata((x), y, (xi[:]), method='nearest')
-      else:
-        xig, yig = np.meshgrid(xi, yi)
-        rbf = Rbf(x, y,function=str(str(options['interpolationType']).replace('Rbf', '')),epsilon=int(options.pop('epsilon',2)), smooth=float(options.pop('smooth',0.0)))
-        yi  = rbf(xi)
-    except Exception as ae:
-      if 'interpolationTypeBackUp' in options.keys():
-        print(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag('Warning') + '->   The interpolation process failed with error : ' + str(ae) + '.The STREAM MANAGER will try to use the BackUp interpolation type '+ options['interpolationTypeBackUp'])
-        options['interpolationTypeBackUp'] = options.pop('interpolationTypeBackUp')
-        yi = interpolateFunction(x,y,options)
-      else: raise Exception(UreturnPrintTag('UTILITIES')+': ' +UreturnPrintPostTag('ERROR') + '-> Interpolation failed with error: ' +  str(ae))
-    if returnCoordinate:
-      return xi,yi
-    else:
-      return yi
-
-def line3DInterpolation(x,y,z,nPoints):
-  """
-    Method to interpolate 3D points on a line
-    @ In, x, ndarray or cached_ndarray, the array of x coordinates
-    @ In, y, ndarray or cached_ndarray, the array of y coordinates
-    @ In, z, ndarray or cached_ndarray, the array of z coordinates
-    @ In, nPoints, int, number of desired inteporlation points
-    @ Out, i, ndarray or cached_ndarray or tuple, the interpolated values
-  """
-  options = copy.copy(option)
-  data = np.vstack((x,y,z))
-  tck , u= interpolate.splprep(data, s=1e-6, k=3)
-  new = interpolate.splev(np.linspace(0,1,nPoints), tck)
-  return new[0], new[1], new[2]
 
 class abstractstatic(staticmethod):
   """
@@ -726,76 +817,71 @@ def add_path_recursively(absoluteInitialPath):
     @ In, absoluteInitialPath, string, the absolute path to add
     @ Out, None
   """
-  for dirr,_,_ in os.walk(absoluteInitialPath): add_path(dirr)
+  for dirr,_,_ in os.walk(absoluteInitialPath):
+    add_path(dirr)
 
-def find_distribution1D():
+def findCrowModule(name):
   """
-    Method to find the crow distribution1D module and return it.
-    @ In, None
-    @ Out, module, instance, the module of distribution1D
+    Method to find one of the crow module (e.g. distribution1D, interpolationNDpy, randomENG, etc.) and return it.
+    @ In, name, str, the name of the module
+    @ Out, module, instance, the instance of module of "name"
   """
-  if sys.version_info.major > 2:
-    try:
-      import crow_modules.distribution1Dpy3
-      return crow_modules.distribution1Dpy3
-    except ImportError as ie:
-      if not str(ie).startswith("No module named"):
-        raise ie
-      import distribution1Dpy3
-      return distribution1Dpy3
-  else:
-    try:
-      import crow_modules.distribution1Dpy2
-      return crow_modules.distribution1Dpy2
-    except ImportError as ie:
-      if not str(ie).startswith("No module named"):
-        raise ie
-      import distribution1Dpy2
-      return distribution1Dpy2
+  availableCrowModules = ['distribution1D','interpolationND','randomENG']
+  # assert
+  assert(name in availableCrowModules)
+  # find the module
+  ext = 'py3' if sys.version_info.major > 2 else 'py2'
+  try:
+    module = importlib.import_module("crow_modules.{}{}".format(name,ext))
+  except ImportError as ie:
+    if not str(ie).startswith("No module named"):
+      raise ie
+    module = importlib.import_module("{}{}".format(name,ext))
+  return module
 
-def find_interpolationND():
+def getPythonCommand():
   """
-    Method to find the crow interpolationND module and return it.
+    Method to get the prefered python command.
     @ In, None
-    @ Out, module, instance, the module of interpolationND
+    @ Out, pythonCommand, str, the name of the command to use.
   """
-  if sys.version_info.major > 2:
-    try:
-      import crow_modules.interpolationNDpy3
-      return crow_modules.interpolationNDpy3
-    except ImportError as ie:
-      if not str(ie).startswith("No module named"):
-        raise ie
-      import interpolationNDpy3
-      return interpolationNDpy3
+  if os.name == "nt":
+    pythonCommand = "python"
   else:
-    try:
-      import crow_modules.interpolationNDpy2
-      return crow_modules.interpolationNDpy2
-    except ImportError as ie:
-      if not str(ie).startswith("No module named"):
-        raise ie
-      import interpolationNDpy2
-      return interpolationNDpy2
+    pythonCommand = sys.executable
+  ## Alternative method.  However, if called by run_tests or raven_framework
+  ## sys.executable is already taken into account PYTHON_COMMAND and this
+  ## logic
+  #if sys.version_info.major > 2:
+  #  if os.name == "nt":
+  #    #Command is python on windows in conda and Python.org install
+  #    pythonCommand = "python"
+  #  else:
+  #    pythonCommand = "python3"
+  #else:
+  #  pythonCommand = "python"
+  #pythonCommand = os.environ.get("PYTHON_COMMAND", pythonCommand)
+  return pythonCommand
+
 
 def printCsv(csv,*args):
-    """
-      Writes the values contained in args to a csv file specified by csv
-      @ In, csv, File instance, an open file object to which we will be writing
-      @ In, args, dict, an arbitrary collection of values to write to the file
-      @ Out, None
-    """
-    print(*args,file=csv,sep=',')
+  """
+    Writes the values contained in args to a csv file specified by csv
+    @ In, csv, File instance, an open file object to which we will be writing
+    @ In, args, dict, an arbitrary collection of values to write to the file
+    @ Out, None
+  """
+  print(*args,file=csv,sep=',')
 
 def printCsvPart(csv,*args):
-    """
-      Writes the values contained in args to a csv file specified by csv appending a comma
-      to the end to allow more data to be written to the line.
-      @ In, csv, File instance, an open file object to which we will be writing
-      @ In, args, dict, an arbitrary collection of values to write to the file
-      @ Out, None
-    """
-    print(*args,file=csv,sep=',',end=',')
+  """
+    Writes the values contained in args to a csv file specified by csv appending a comma
+    to the end to allow more data to be written to the line.
+    @ In, csv, File instance, an open file object to which we will be writing
+    @ In, args, dict, an arbitrary collection of values to write to the file
+    @ Out, None
+  """
+  print(*args,file=csv,sep=',',end=',')
 
 def tryParse(text):
   """
@@ -910,9 +996,11 @@ def typeMatch(var,varTypeStr):
   if not match:
     # check if the types start with the same root
     if len(typeVar.__name__) <= len(varTypeStr):
-      if varTypeStr.startswith(typeVar.__name__): match = True
+      if varTypeStr.startswith(typeVar.__name__):
+        match = True
     else:
-      if typeVar.__name__.startswith(varTypeStr): match = True
+      if typeVar.__name__.startswith(varTypeStr):
+        match = True
   return match
 
 def sizeMatch(var,sizeToCheck):
@@ -923,7 +1011,8 @@ def sizeMatch(var,sizeToCheck):
     @ Out, sizeMatched, bool, is the size ok?
   """
   sizeMatched = True
-  if len(numpy.atleast_1d(var)) != sizeToCheck: sizeMatched = False
+  if len(numpy.atleast_1d(var)) != sizeToCheck:
+    sizeMatched = False
   return sizeMatched
 
 
@@ -935,12 +1024,15 @@ def isASubset(setToTest,pileList):
     @ Out, isASubset, bool, True if setToTest is a subset
   """
 
-  if len(pileList) < len(setToTest): return False
+  if len(pileList) < len(setToTest):
+    return False
 
   index = 0
   for element in setToTest:
-    try              : index = pileList.index(element, index) + 1
-    except ValueError: return False
+    try:
+      index = pileList.index(element, index) + 1
+    except ValueError:
+      return False
   else:
     return True
 
@@ -1011,7 +1103,8 @@ def checkTypeRecursively(inObject):
     for val in inObject:
       returnType = checkTypeRecursively(val)
       break
-  except: pass
+  except:
+    pass
   return returnType
 
 def returnIdSeparator():
@@ -1024,3 +1117,93 @@ def returnIdSeparator():
   """
   return __idSeparator
 
+def getAllSubclasses(cls):
+  """
+    Recursively collect all of the classes that are a subclass of cls
+    @ In, cls, the class to retrieve sub-classes.
+    @ Out, getAllSubclasses, list of class objects for each subclass of cls.
+  """
+  return cls.__subclasses__() + [g for s in cls.__subclasses__() for g in getAllSubclasses(s)]
+
+def displayAvailable():
+  """
+    The return variable for backend default setting of whether a display is
+    available or not. For instance, if we are running on the HPC without an X11
+    instance, then we don't have the ability to display the plot, only to save it
+    to a file
+    @ In, None
+    @ Out, dispaly, bool, return True if platform is Windows or environment varialbe
+      'DISPLAY' is available, otherwise return False
+  """
+  display = False
+  if platform.system() == 'Windows':
+    display = True
+  else:
+    if os.getenv('DISPLAY'):
+      display = True
+    else:
+      display = False
+  return display
+
+def which(cmd):
+  """
+    Emulate the which method in shutil.
+    Return the path to an executable which would be run if the given cmd was called.
+    If no cmd would be called, return None.
+    @ In, cmd, str, the exe to check
+    @ Out, which, str, the full path or None if not found
+  """
+  def _access_check(fn):
+    """
+      Just check if the path is executable
+      @ In, fn, string, the file to check
+      @ Out, _access_check, bool, if accessable or not?
+    """
+    return (os.path.exists(fn) and os.access(fn, os.X_OK) and not os.path.isdir(fn))
+  if os.path.dirname(cmd):
+    if _access_check(cmd):
+      return cmd
+    return None
+  path = os.environ.get("PATH", os.defpath)
+  if not path:
+    return None
+  path = path.split(os.pathsep)
+  if sys.platform == "win32":
+    if not os.curdir in path:
+      path.insert(0, os.curdir)
+    pathext = os.environ.get("PATHEXT", "").split(os.pathsep)
+    if any(cmd.lower().endswith(ext.lower()) for ext in pathext):
+      files = [cmd]
+    else:
+      files = [cmd + ext for ext in pathext]
+  else:
+    files = [cmd]
+  seen = set()
+  for dir in path:
+    normdir = os.path.normcase(dir)
+    if not normdir in seen:
+      seen.add(normdir)
+      for thefile in files:
+        name = os.path.join(dir, thefile)
+        if _access_check(name):
+          return name
+  return None
+
+def orderClusterLabels(originalLables):
+  """
+    Regulates labels such that the first unique one to appear is 0, second one is 1, and so on.
+    e.g. [B, B, C, B, A, A, D] becomes [0, 0, 1, 0, 2, 2, 3]
+    @ In, originalLabels, list, the original labeling system
+    @ Out, labels, np.array(int), ordinal labels
+  """
+  labels = np.zeros(len(originalLabels), dtype=int)
+  oldToNew = {}
+  nextUsableLabel = 0
+  for l, old in enumerate(originalLabels):
+    new = oldToNew.get(old, None)
+    if new is None:
+      oldToNew[old] = nextUsableLabel
+      new = nextUsableLabel
+      nextUsableLabel += 1
+    labels[l] = new
+  return labels

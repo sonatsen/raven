@@ -21,7 +21,6 @@
 from __future__ import division, print_function, unicode_literals, absolute_import
 import warnings
 warnings.simplefilter('default',DeprecationWarning)
-#if not 'xrange' in dir(__builtins__): xrange = range
 #End compatibility block for Python 3----------------------------------------------------------------
 
 #External Modules------------------------------------------------------------------------------------
@@ -29,58 +28,132 @@ import sys
 import copy
 import abc
 import numpy as np
+from collections import deque
 #External Modules End--------------------------------------------------------------------------------
 
 #Internal Modules------------------------------------------------------------------------------------
-from utils import utils
+from utils import utils,randomUtils,InputData
 from BaseClasses import BaseType
 from Assembler import Assembler
 import SupervisedLearning
-import Distributions
+from Samplers import Sampler
 #Internal Modules End--------------------------------------------------------------------------------
 
-class Optimizer(utils.metaclass_insert(abc.ABCMeta,BaseType),Assembler):
+class Optimizer(Sampler):
   """
     This is the base class for optimizers
-    Optimizer is a special type of "samplers" that own the optimization strategy (Type) and they generate the
-    input values to optimize a loss function. They do not have distributions inside!!!!
-
-    --Instance--
-    myInstance = Optimizer()
-    myInstance.XMLread(xml.etree.ElementTree.Element)  This method generates all the information that will be permanent for the object during the simulation
-
-    --usage--
-    myInstance = Optimizer()
-    myInstance.XMLread(xml.etree.ElementTree.Element)  This method generate all permanent information of the object from <Simulation>
-    myInstance.whatDoINeed()                           -see Assembler class-
-    myInstance.initialize()                            This method is called from the <Step> before the Step process start.
-    myInstance.amIreadyToProvideAnInput                Requested from <Step> used to verify that the optimizer is available to generate a new input for the model
-    myInstance.generateInput(self,model,oldInput)      Requested from <Step> to generate a new input. Generate the new values and request to model to modify according the input and returning it back
-
-    --Other inherited methods--
-    myInstance.whoAreYou()                            -see BaseType class-
-    myInstance.myCurrentSetting()                     -see BaseType class-
-
-    --Adding a new Optimizer subclass--
-    <MyClass> should inherit at least from Optimizer or from another derived class already presents
-
-    DO NOT OVERRIDE any of the class method that are not starting with self.local*
-
-    ADD your class to the dictionary __InterfaceDict in the Factory submodule
-
-    The following method overriding is MANDATORY:
-    self.localGenerateInput(model,oldInput)  : this is where the step happens, after this call the output is ready
-    self._localGenerateAssembler(initDict)
-    self._localWhatDoINeed()
-
-    the following methods could be overrode:
-    self.localInputAndChecks(xmlNode)
-    self.localGetInitParams()
-    self.localGetCurrentSetting()
-    self.localInitialize()
-    self.localStillReady(ready)
-    self.localFinalizeActualSampling(jobObject,model,myInput)
+    Optimizer is a special type of "samplers" that own the optimization strategy (Type) and they generate the input values to optimize a loss function.
+    The most significant deviation from the Samplers is that they do not use distributions.
   """
+  ##########################
+  # Initialization Methods #
+  ##########################
+  @classmethod
+  def getInputSpecification(cls):
+    """
+      Method to get a reference to a class that specifies the input data for class cls.
+      @ In, cls, the class for which we are retrieving the specification
+      @ Out, inputSpecification, InputData.ParameterInput, class to use for specifying input of cls.
+    """
+    #### FULL INPUT LIST SPSA #### -> * means part of FiniteDiff as well
+    # so far, there's no distinction between optimizers, so all the input from SPSA is here.  Fix this when we sort out optimizers.
+
+    inputSpecification = super(Optimizer,cls).getInputSpecification()
+    # assembled objects
+    targEval = InputData.parameterInputFactory('TargetEvaluation', contentType=InputData.StringType, strictMode=True)
+    targEval.addParam('type', InputData.StringType, True)
+    targEval.addParam('class', InputData.StringType, True)
+    inputSpecification.addSub(targEval)
+    sampler = InputData.parameterInputFactory('Sampler', contentType=InputData.StringType, strictMode=True)
+    sampler.addParam('type', InputData.StringType, True)
+    sampler.addParam('class', InputData.StringType, True)
+    inputSpecification.addSub(sampler)
+    function = InputData.parameterInputFactory('Function', contentType=InputData.StringType, strictMode=True)
+    function.addParam('type', InputData.StringType, True)
+    function.addParam('class', InputData.StringType, True)
+    inputSpecification.addSub(function)
+    precond = InputData.parameterInputFactory('Preconditioner', contentType=InputData.StringType, strictMode=True)
+    precond.addParam('type', InputData.StringType, True)
+    precond.addParam('class', InputData.StringType, True)
+    inputSpecification.addSub(precond)
+
+    # variable
+    ## was also part of Sampler, but we need to rewrite variable, so remove it first
+    inputSpecification.removeSub('variable')
+    variable = InputData.parameterInputFactory('variable', strictMode=True)
+    variable.addParam("name", InputData.StringType, True)
+    variable.addParam("shape", InputData.IntegerListType, required=False)
+    upperBound = InputData.parameterInputFactory('upperBound', contentType=InputData.FloatType, strictMode=True)
+    lowerBound = InputData.parameterInputFactory('lowerBound', contentType=InputData.FloatType, strictMode=True)
+    initial = InputData.parameterInputFactory('initial',contentType=InputData.StringListType)
+    variable.addSub(upperBound)
+    variable.addSub(lowerBound)
+    variable.addSub(initial)
+    inputSpecification.addSub(variable)
+    # constant -> use the Sampler's specs.
+
+    # objectVar
+    objectVar = InputData.parameterInputFactory('objectVar', contentType=InputData.StringType, strictMode=True)
+    inputSpecification.addSub(objectVar)
+
+    # initialization
+    init = InputData.parameterInputFactory('initialization', strictMode=True)
+    whenWriteEnum = InputData.makeEnumType('whenWriteEnum','whenWriteType',['final','every'])
+    limit      = InputData.parameterInputFactory('limit', contentType=InputData.IntegerType)
+    seed       = InputData.parameterInputFactory('initialSeed', contentType=InputData.IntegerType)
+    minmaxEnum = InputData.makeEnumType('MinMax','OptimizerTypeType',['min','max'])
+    minmax     = InputData.parameterInputFactory('type', contentType=minmaxEnum)
+    thresh     = InputData.parameterInputFactory('thresholdTrajRemoval', contentType=InputData.FloatType)
+    write      = InputData.parameterInputFactory('writeSteps',contentType=whenWriteEnum)
+    resample   = InputData.parameterInputFactory('resample',contentType=InputData.BoolType)
+    init.addSub(limit)
+    init.addSub(seed)
+    init.addSub(minmax)
+    init.addSub(thresh)
+    init.addSub(write)
+    init.addSub(resample)
+    inputSpecification.addSub(init)
+    # convergence
+
+    # central difference
+    cendiff = InputData.parameterInputFactory('centralDifference', contentType=InputData.BoolType)
+    gradhis = InputData.parameterInputFactory('useGradientHistory', contentType=InputData.BoolType)
+
+    conv = InputData.parameterInputFactory('convergence', strictMode=True)
+    itLim   = InputData.parameterInputFactory('iterationLimit'   , contentType=InputData.IntegerType)
+    pers    = InputData.parameterInputFactory('persistence'      , contentType=InputData.IntegerType)
+    rel     = InputData.parameterInputFactory('relativeThreshold', contentType=InputData.FloatType  )
+    abst    = InputData.parameterInputFactory('absoluteThreshold', contentType=InputData.FloatType  )
+    grad    = InputData.parameterInputFactory('gradientThreshold', contentType=InputData.FloatType  )
+    minstep = InputData.parameterInputFactory('minStepSize'      , contentType=InputData.FloatType  )
+    grow    = InputData.parameterInputFactory('gainGrowthFactor' , contentType=InputData.FloatType  )
+    shrink  = InputData.parameterInputFactory('gainShrinkFactor' , contentType=InputData.FloatType  )
+    conv.addSub(cendiff)
+    conv.addSub(gradhis)
+    conv.addSub(itLim)
+    conv.addSub(pers)
+    conv.addSub(rel)
+    conv.addSub(abst)
+    conv.addSub(grad)
+    conv.addSub(minstep)
+    conv.addSub(grow)
+    conv.addSub(shrink)
+    inputSpecification.addSub(conv)
+
+    # parameter
+    param = InputData.parameterInputFactory('parameter', strictMode=True)
+    stochEnum = InputData.makeEnumType('StochDistEnum','StochDistType',['Hypersphere','Bernoulli'])
+    num    = InputData.parameterInputFactory('numGradAvgIterations'   , contentType=InputData.IntegerType)
+    stoch  = InputData.parameterInputFactory('stochasticDistribution' , contentType=stochEnum            )
+    bisect = InputData.parameterInputFactory('innerBisectionThreshold', contentType=InputData.FloatType  )
+    loop   = InputData.parameterInputFactory('innerLoopLimit'         , contentType=InputData.IntegerType)
+    param.addSub(num)
+    param.addSub(stoch)
+    param.addSub(bisect)
+    param.addSub(loop)
+    inputSpecification.addSub(param)
+
+    return inputSpecification
 
   def __init__(self):
     """
@@ -89,80 +162,113 @@ class Optimizer(utils.metaclass_insert(abc.ABCMeta,BaseType),Assembler):
       @ In, None
       @ Out, None
     """
-    #FIXME: Since the similarity of this class with the base sampler, we should merge this
-    BaseType.__init__(self)
-    Assembler.__init__(self)
+    Sampler.__init__(self)
+    #counters
+    ## while "counter" is scalar in Sampler, it's more complicated in Optimizer
     self.counter                        = {}                        # Dict containing counters used for based and derived class
     self.counter['mdlEval']             = 0                         # Counter of the model evaluation performed (better the input generated!!!). It is reset by calling the function self.initialize
     self.counter['varsUpdate']          = 0                         # Counter of the optimization iteration.
+    self.counter['recentOptHist']       = {}                        # as {traj: [pt0, pt1]} where each pt is {'inputs':{var:val}, 'output':val}, the two most recently-accepted points by value
+    self.counter['persistence'  ]       = {}                        # as {traj: n} where n is the number of consecutive converges
+    #limits
+    ## while "limit" is scalar in Sampler, it's more complicated in Optimizer
     self.limit                          = {}                        # Dict containing limits for each counter
-    self.limit['mdlEval']               = sys.maxsize               # Maximum number of the loss function evaluation
-    self.limit['varsUpdate']            = sys.maxsize               # Maximum number of the optimization iteration.
-    self.initSeed                       = None                      # Seed for random number generators
-    self.optVars                        = None                      # Decision variables for optimization
+    self.limit['mdlEval']               = 2000                      # Maximum number of the loss function evaluation
+    self.limit['varsUpdate']            = 650                       # Maximum number of the optimization iteration.
+    #variable lists
+    self.objVar                         = None                      # Objective variable to be optimized
+    self.optVars                        = {}                        # By trajectory, current decision variables for optimization
+    self.fullOptVars                    = None                      # Decision variables for optimization, full space
+    self.optTraj                        = None                      # Identifiers of parallel optimization trajectories
+    #initialization parameters
     self.optVarsInit                    = {}                        # Dict containing upper/lower bounds and initial of each decision variables
     self.optVarsInit['upperBound']      = {}                        # Dict containing upper bounds of each decision variables
     self.optVarsInit['lowerBound']      = {}                        # Dict containing lower bounds of each decision variables
     self.optVarsInit['initial']         = {}                        # Dict containing initial values of each decision variables
-    self.optVarsHist                    = {}                        # History of normalized decision variables for each iteration
-    self.nVar                           = 0                         # Number of decision variables
-    self.objVar                         = None                      # Objective variable to be optimized
-    self.optType                        = None                      # Either maximize or minimize
-    self.optTraj                        = None                      # Identifiers of parallel optimization trajectories
-    self.thresholdTrajRemoval           = None                      # Threshold used to determine the convergence of parallel optimization trajectories
+    self.optVarsInit['ranges']          = {}                        # Dict of the ranges (min and max) of each variable's domain
+    self.optType                        = None                      # Either max or min
+    self.writeSolnExportOn              = None                      # Determines when we write to solution export (every step or final solution)
     self.paramDict                      = {}                        # Dict containing additional parameters for derived class
+    self.initializationSampler          = None                      # Sampler that can be used to initialize the optimizer trajectories
+    self.optVarsInitialized             = {}                        # Dict {var1:<initial> present?,var2:<initial> present?}
+    #convergence tools
+    self.optVarsHist                    = {}                        # History of normalized decision variables for each iteration
+    self.thresholdTrajRemoval           = None                      # Threshold used to determine the convergence of parallel optimization trajectories
     self.absConvergenceTol              = 0.0                       # Convergence threshold (absolute value)
     self.relConvergenceTol              = 1.e-3                     # Convergence threshold (relative value)
-    self.solutionExport                 = None                      #This is the data used to export the solution (it could also not be present)
-    self.values                         = {}                        # for each variable the current value {'var name':value}
-    self.inputInfo                      = {}                        # depending on the optimizer several different type of keywarded information could be present only one is mandatory, see below
-    self.inputInfo['SampledVars'     ]  = self.values               # this is the location where to get the values of the sampled variables
-    self.constants                      = {}                        # dictionary of constants variables
-    self.FIXME                          = False                     # FIXME flag
-    self.printTag                       = self.type                 # prefix for all prints (optimizer type)
-
-    self._endJobRunnable                = sys.maxsize               # max number of inputs creatable by the optimizer right after a job ends
-
+    self.convergencePersistence         = 1                         # number of retries to attempt before accepting convergence
+    # TODO REWORK minStepSize is for gradient-based specifically
+    self.minStepSize                    = 1e-9                      # minimum allowable step size (in abs. distance, in input space)
+    #sampler-step communication
+    self.submissionQueue                = {}                        # by traj, a place (deque) to store points that should be submitted some time after they are discovered
+    #functions and dataojbects
     self.constraintFunction             = None                      # External constraint function, could be not present
+    self.preconditioners                = {}                        # by name, Models that might be used as preconditioners
+    self.solutionExport                 = None                      # This is the data used to export the solution
     self.mdlEvalHist                    = None                      # Containing information of all model evaluation
     self.objSearchingROM                = None                      # ROM used internally for fast loss function evaluation
-
-    self.addAssemblerObject('Restart' ,'-n',True)
+    #stateful tracking
+    self.recommendedOptPoint            = {}                        # by traj, the next recommended point (as a dict) in the input space to move to
+    self.nextActionNeeded               = (None,None)               # tool for localStillReady to inform localGenerateInput on the next action needed
+    self.status                         = {}                        # by trajectory, ("string-based status", arbitrary, other, entries)
+    ### EXPLANATION OF STATUS SYSTEM
+    #
+    # Due to the complicated nature of adaptive sampling in a forward-sampling approach, we keep track
+    # of the current "process" and "reason" for each trajectory.  These processes and reasons are set by the
+    # individual optimizers for their own use in checking readiness, convergence, etc.
+    # They are stored as self.status[traj] = {'process':'','reason':''}
+    # Common processes to all optimizers:
+    # TODO these are the ones for SPSA, this should get moved or something when we rework this module
+    # Processes:
+    #   "submitting grad eval points" - submitting new points so later we can evaluate a gradient and take an opt step
+    #   "collecting grad eval points" - all the required gradient evaluation points are submitted, so we're just waiting to collect them
+    #   "submitting new opt points"   - a new optimal point has been postulated, and is being submitted for evaluationa (not actually used)
+    #   "collecting new opt points"   - the new  hypothetical optimal point has been submitted, and we're waiting on it to finish
+    #   "evaluate gradient"           - localStillReady notes we have all the new grad eval points, and has flagged for gradient to be evaluated in localGenerateInput
+    #   "following traj <#>"          - trajectory is following another one, given by the last word
+    # Reasons:
+    #   "just started"                - the optimizer has only just begun operation, and doesn't know what it's doing yet
+    #   "found new opt point"         - the last hypothetical optimal point has been accepted, so we need to move forward
+    #   "rejecting bad opt point"     - the last hypothetical optimal point was rejected, so we need to reconsider
+    #   "seeking new opt point"       - the process of looking for a new opt point has started
+    #   "converged"                   - the trajectory is in convergence
+    #   "removed as redundant"        - the trajectory has ended because it follows another one
+    #   "received recommended point"  - something other than the normal algorithm (such as a preconditioner) suggested a point
+    # example usage:
+    #   self.status[traj]['process'] == 'submitting grad eval points' and self.status[traj]['reason'] == 'rejecting bad opt point'
+    #
+    ### END explanation
     self.addAssemblerObject('TargetEvaluation','1')
     self.addAssemblerObject('Function','-1')
+    self.addAssemblerObject('Preconditioner','-n')
+    self.addAssemblerObject('Sampler','-1')   #This Sampler can be used to initialize the optimization initial points (e.g. partially replace the <initial> blocks for some variables)
 
   def _localGenerateAssembler(self,initDict):
     """
       It is used for sending to the instanciated class, which is implementing the method, the objects that have been requested through "whatDoINeed" method
-      It is an abstract method -> It must be implemented in the derived class!
+      Overloads the base Sampler class since optimizer has different requirements
       @ In, initDict, dict, dictionary ({'mainClassName(e.g., Databases):{specializedObjectName(e.g.,DatabaseForSystemCodeNamedWolf):ObjectInstance}'})
       @ Out, None
     """
-    ## FIX ME -- this method is inherited from sampler and may not be needed by optimizer
-    ## Currently put here as a place holder
-    pass
+    self.assemblerDict['Functions'    ] = []
+    self.assemblerDict['Distributions'] = []
+    self.assemblerDict['DataObjects'  ] = []
+    for mainClass in ['Functions','Distributions','DataObjects']:
+      for funct in initDict[mainClass]:
+        self.assemblerDict[mainClass].append([mainClass,initDict[mainClass][funct].type,funct,initDict[mainClass][funct]])
 
   def _localWhatDoINeed(self):
     """
-      This method is a local mirror of the general whatDoINeed method.
-      It is implemented by the optimizers that need to request special objects
+      Identifies needed distributions and functions.
+      Overloads Sampler base implementation because of unique needs.
       @ In, None
       @ Out, needDict, dict, list of objects needed
     """
-    ## FIX ME -- this method is inherited from sampler and may not be needed by optimizer
-    ## Currently put here as a place holder
-    return {}
-
-  def _readMoreXML(self,xmlNode):
-    """
-      Function to read the portion of the xml input that belongs to this specialized class
-      and initialize some stuff based on the inputs got
-      @ In, xmlNode, xml.etree.ElementTree.Element, Xml element node
-      @ Out, None
-    """
-    Assembler._readMoreXML(self,xmlNode)
-    self._readMoreXMLbase(xmlNode)
-    self.localInputAndChecks(xmlNode)
+    needDict = {}
+    needDict['Distributions'] = [(None,'all')] # We get ALL Distributions in case a Sampler is used for the initialization of the initial points
+    needDict['Functions'    ] = [(None,'all')] # We get ALL Functions in case a Sampler is used for the initialization of the initial points
+    needDict['DataObjects'  ] = [(None,'all')] # We get ALL DataObjects in case a CustomSampler is used for the initialization of the initial points
+    return needDict
 
   def _readMoreXMLbase(self,xmlNode):
     """
@@ -171,93 +277,412 @@ class Optimizer(utils.metaclass_insert(abc.ABCMeta,BaseType),Assembler):
       @ In, xmlNode, xml.etree.ElementTree.Element, Xml element node1
       @ Out, None
     """
-    for child in xmlNode:
-      if child.tag == "variable":
-        if self.optVars == None: self.optVars = []
-        varname = str(child.attrib['name'])
-        self.optVars.append(varname)
-        for childChild in child:
-          if   childChild.tag == "upperBound": self.optVarsInit['upperBound'][varname] = float(childChild.text)
-          elif childChild.tag == "lowerBound": self.optVarsInit['lowerBound'][varname] = float(childChild.text)
-          elif childChild.tag == "initial"   :
-            self.optVarsInit['initial'][varname] = {}
-            temp = childChild.text.split(',')
-            for trajInd, initVal in enumerate(temp):
-              try              : self.optVarsInit['initial'][varname][trajInd] = float(initVal)
-              except ValueError: self.raiseAnError(ValueError, "Unable to convert to float the intial value for variable "+varname+ " in trajectory "+str(trajInd))
+    paramInput = self.getInputSpecification()()
+    paramInput.parseNode(xmlNode)
+
+    # TODO some merging with base sampler XML reading might be possible, but in general requires different entries
+    # first read all XML nodes
+    for child in paramInput.subparts:
+      #FIXME: the common variable reading should be wrapped up in a method to reduce the code redundancy
+      if child.getName() == "variable":
+        if self.fullOptVars is None:
+          self.fullOptVars = []
+        # store variable name
+        varName = child.parameterValues['name']
+        self.optVarsInitialized[varName] = False
+        # store varible requested shape, if any
+        if 'shape' in child.parameterValues:
+          self.variableShapes[varName] = child.parameterValues['shape']
+        self.fullOptVars.append(varName)
+        self.optVarsInit['initial'][varName] = {}
+        for childChild in child.subparts:
+          if childChild.getName() == "upperBound":
+            self.optVarsInit['upperBound'][varName] = childChild.value
+          elif childChild.getName() == "lowerBound":
+            self.optVarsInit['lowerBound'][varName] = childChild.value
+          elif childChild.getName() == "initial":
+            self.optVarsInit['initial'][varName] = {}
+            self.optVarsInitialized[varName] = True
+            initPoints = childChild.value
+            for trajInd, initVal in enumerate(initPoints):
+              try:
+                self.optVarsInit['initial'][varName][trajInd] = float(initVal)
+              except ValueError:
+                self.raiseAnError(ValueError,
+                    'Unable to convert to float the intial value for variable "{}" in trajectory "{}": {}'
+                    .format(varName,trajInd,initVal))
             if self.optTraj == None:
-              self.optTraj = range(len(self.optVarsInit['initial'][varname].keys()))
-      elif child.tag == "constant":
-        value = utils.partialEval(child.text)
-        if value is None:
-          self.raiseAnError(IOError,'The body of "constant" XML block should be a number. Got: ' +child.text)
-        try:
-          self.constants[child.attrib['name']] = value
-        except KeyError:
-          self.raiseAnError(KeyError,child.tag+' must have the attribute "name"!!!')
-      elif child.tag == "objectVar":
-        self.objVar = child.text
+              self.optTraj = list(range(len(self.optVarsInit['initial'][varName].keys())))
 
-      elif child.tag == "initialization":
-        self.initSeed = Distributions.randomIntegers(0,2**31,self)
-        for childChild in child:
-          if childChild.tag == "limit":
-            self.limit['mdlEval'] = int(childChild.text)
-          elif childChild.tag == "type":
-            self.optType = childChild.text
+      elif child.getName() == "constant":
+        name,value = self._readInConstant(child)
+        self.constants[child.parameterValues['name']] = value
+
+      elif child.getName() == "objectVar":
+        self.objVar = child.value.strip()
+
+      elif child.getName() == "initialization":
+        self.initSeed = randomUtils.randomIntegers(0,2**31,self)
+        for childChild in child.subparts:
+          if childChild.getName() == "limit":
+            self.limit['mdlEval'] = childChild.value
+            #the manual once claimed that "A" defaults to iterationLimit/10, but it's actually this number/10.
+          elif childChild.getName() == "type":
+            self.optType = childChild.value
             if self.optType not in ['min', 'max']:
-              self.raiseAnError(IOError, 'Unknown optimization type '+childChild.text+'. Available: mix or max')
-          elif childChild.tag == "initialSeed":
-            self.initSeed = int(childChild.text)
-          elif childChild.tag == 'thresholdTrajRemoval':
-            self.thresholdTrajRemoval = float(childChild.text)
-          else: self.raiseAnError(IOError,'Unknown tag '+childChild.tag+' .Available: limit, type, initialSeed!')
+              self.raiseAnError(IOError, 'Unknown optimization type "{}". Available: "min" or "max"'.format(childChild.value))
+          elif childChild.getName() == "initialSeed":
+            self.initSeed = childChild.value
+          elif childChild.getName() == 'thresholdTrajRemoval':
+            self.thresholdTrajRemoval = childChild.value
+          elif childChild.getName() == 'writeSteps':
+            whenToWrite = childChild.value.strip().lower()
+            if whenToWrite == 'every':
+              self.writeSolnExportOn = 'every'
+            elif whenToWrite == 'final':
+              self.writeSolnExportOn = 'final'
+            else:
+              self.raiseAnError(IOError,'Unexpected frequency for <writeSteps>: "{}". Expected "every" or "final".'.format(whenToWrite))
 
-      elif child.tag == "convergence":
-        for childChild in child:
-          if childChild.tag == "iterationLimit":
-            self.limit['varsUpdate'] = int(childChild.text)
-          if childChild.tag == "absoluteThreshold":
-            self.absConvergenceTol = float(childChild.text)
-          if childChild.tag == "relativeThreshold":
-            self.relConvergenceTol = float(childChild.text)
-      elif child.tag == "restartTolerance":
-        self.restartTolerance = float(child.text)
+      elif child.getName() == "convergence":
+        for childChild in child.subparts:
+          if childChild.getName() == "iterationLimit":
+            self.limit['varsUpdate'] = childChild.value
+          elif childChild.getName() == "absoluteThreshold":
+            self.absConvergenceTol = childChild.value
+          elif childChild.getName() == "relativeThreshold":
+            self.relConvergenceTol = childChild.value
+          elif childChild.getName() == "minStepSize":
+            self.minStepSize = childChild.value
+          elif childChild.getName() == 'persistence':
+            self.convergencePersistence = childChild.value
 
-      elif child.tag == 'parameter':
-        for childChild in child:
-          self.paramDict[childChild.tag] = childChild.text
+      elif child.getName() == "restartTolerance":
+        self.restartTolerance = child.value
 
-    if self.optType == None:    self.optType = 'min'
-    if self.thresholdTrajRemoval == None: self.thresholdTrajRemoval = 0.05
-    if self.initSeed == None:   self.initSeed = Distributions.randomIntegers(0,2**31,self)
-    if self.objVar == None:     self.raiseAnError(IOError, 'Object variable is not specified for optimizer!')
-    if self.optVars == None:    self.raiseAnError(IOError, 'Decision variable is not specified for optimizer!')
-    else:                       self.optVars.sort()
-    if self.optTraj == None:    self.optTraj = [0]
-    for varname in self.optVars:
-      if varname not in self.optVarsInit['upperBound'].keys(): self.raiseAnError(IOError, 'Upper bound for '+varname+' is not provided' )
-      if varname not in self.optVarsInit['lowerBound'].keys(): self.raiseAnError(IOError, 'Lower bound for '+varname+' is not provided' )
-      if varname not in self.optVarsInit['initial'].keys():
-        self.optVarsInit['initial'][varname] = {}
-        for trajInd in self.optTraj:
-          self.optVarsInit['initial'][varname][trajInd] = (self.optVarsInit['upperBound'][varname]+self.optVarsInit['lowerBound'][varname])/2.0
+      elif child.getName() == 'parameter':
+        for childChild in child.subparts:
+          self.paramDict[childChild.getName()] = childChild.value
+
+    # now that XML is read, do some checks and defaults
+    # set defaults
+    if self.writeSolnExportOn is None:
+      self.writeSolnExportOn = 'every'
+    self.raiseAMessage('Writing to solution export on "{}" optimizer iteration.'.format(self.writeSolnExportOn))
+    if self.optType is None:
+      self.optType = 'min'
+    if self.thresholdTrajRemoval is None:
+      self.thresholdTrajRemoval = 0.05
+    if self.initSeed is None:
+      self.initSeed = randomUtils.randomIntegers(0,2**31,self)
+    # NOTE: optTraj can be changed in "initialize" if the user provides a sampler for seeding
+    if self.optTraj is None:
+      self.optTraj = [0]
+
+    # check required settings TODO this can probably be removed thanks to the input checking!
+    if self.objVar is None:
+      self.raiseAnError(IOError, 'Object variable is not specified for optimizer!')
+    if self.fullOptVars is None:
+      self.raiseAnError(IOError, 'Decision variable(s) not specified for optimizer!')
+
+    for var in self.getOptVars():
+      if var not in self.variableShapes:
+        self.variableShapes[var] = (1,)
       else:
-        for trajInd in self.optTraj:
-          initVal =  self.optVarsInit['initial'][varname][trajInd]
-          if initVal < self.optVarsInit['lowerBound'][varname] or initVal > self.optVarsInit['upperBound'][varname]:
-            self.raiseAnError(IOError,"The initial value for variable "+varname+" and trajectory "+str(trajInd) +" is outside the domain identified by the lower and upper bounds!")
-      if len(self.optTraj) != len(self.optVarsInit['initial'][varname].keys()):
-        self.raiseAnError(ValueError, 'Number of initial values does not equal to the number of parallel optimization trajectories')
-    self.optTrajLive = copy.deepcopy(self.optTraj)
+        if len(self.variableShapes[var]) > 1:
+          self.raiseAnError(NotImplementedError,'Matrices as inputs are not yet supported in the Optimizer. For variable "{}" received shape "{}"!'.format(var,self.variableShapes[var]))
 
-  def localInputAndChecks(self,xmlNode):
+    for varName in self.fullOptVars:
+      if varName not in self.optVarsInit['upperBound'].keys():
+        self.raiseAnError(IOError, 'Upper bound for '+varName+' is not provided' )
+      if varName not in self.optVarsInit['lowerBound'].keys():
+        self.raiseAnError(IOError, 'Lower bound for '+varName+' is not provided' )
+      #store ranges of variables
+      self.optVarsInit['ranges'][varName] = self.optVarsInit['upperBound'][varName] - self.optVarsInit['lowerBound'][varName]
+      if self.optVarsInit['ranges'][varName] < 0:
+         self.raiseAnError(ValueError, 'Variable {}: Lower bound {} is larger than upper bound {}'.format(varName, self.optVarsInit['lowerBound'][varName],self.optVarsInit['upperBound'][varName]) )
+      if len(self.optVarsInit['initial'][varName]) == 0:
+        for traj in self.optTraj:
+          self.optVarsInit['initial'][varName][traj] = None
+      self.toBeSampled[varName] = None # compatability with base Sampler
+    return paramInput
+
+  def initialize(self,externalSeeding=None,solutionExport=None):
     """
-      Local method. Place here the additional reading, remember to add initial parameters in the method localGetInitParams
-      @ In, xmlNode, xml.etree.ElementTree.Element, Xml element node
+      This function should be called every time a clean optimizer is needed. Called before takeAstep in <Step>
+      @ In, externalSeeding, int, optional, external seed
+      @ In, solutionExport, DataObject, optional, a PointSet to hold the solution
       @ Out, None
     """
-    pass # To be overwritten by subclass
+    for entry in self.assemblerDict.get('Preconditioner',[]):
+      cls,typ,name,model = entry
+      if cls != 'Models' or typ != 'ExternalModel':
+        self.raiseAnError(IOError,'Currently only "ExternalModel" models can be used as preconditioners! Got "{}.{}" for "{}".'.format(cls,typ,name))
+      self.preconditioners[name] = model
+      model.initialize({},[])
+
+    for entry in self.assemblerDict.get('Sampler',[]):
+      cls,typ,name,sampler = entry
+      forwardSampler = False
+      for baseClass in sampler.__class__.__bases__:
+        if "ForwardSampler" in baseClass.__name__:
+          forwardSampler = True
+          break
+      if not forwardSampler:
+        self.raiseAnError(IOError,'Only "ForwardSampler"s (e.g. MonteCarlo, Grid, etc.) can be used for initializing the trajectories in the Optimizer! Got "{}.{}" for "{}".'.format(cls,typ,name))
+      self.initializationSampler = sampler
+      initDict = {}
+      for entity in ['Distributions','Functions','DataObjects']:
+        initDict[entity] = dict((entry[2],entry[3]) for entry in self.assemblerDict.get(entity,[]))
+      self.initializationSampler._localGenerateAssembler(initDict)
+      for key in self.initializationSampler.getInitParams().keys():
+        if key.startswith("sampled variable:"):
+          var = key.replace("sampled variable:","").strip()
+          # check if the sampled variables are among the optimization parameters
+          if var not in self.getOptVars():
+            self.raiseAnError(IOError,'The variable "'+var+'" sampled by the initialization Sampler "'+self.initializationSampler.name+'" is not among the optimization parameters!')
+          # check if the sampled variables have been already initialized in the optimizer (i.e. <initial>)
+          if self.optVarsInitialized[var]:
+            self.raiseAnError(IOError,'The variable "'+var+'" sampled by the initialization Sampler "'+self.initializationSampler.name+
+                                      '" has been already initialized in the Optimizer block. Remove <initial> XML node in Optimizer or the <variable> XML node in the Sampler!')
+      # generate the initial coordinates by the sampler and check if they are inside the boundaries
+      self.initializationSampler.initialize(externalSeeding)
+      # check the number of trajectories (i.e. self.initializationSample.limit in the Sampler)
+      currentNumberTrajectories = len(self.optTraj)
+      if currentNumberTrajectories > 1:
+        if currentNumberTrajectories != self.initializationSampler.limit:
+          self.raiseAnError(IOError,"The number of samples generated by the initialization Sampler are different "+
+                                    "than the one inputted in the Optimizer (from the variables where the <initial> XML block has been inputted)")
+      else:
+        self.optTraj = list(range(self.initializationSampler.limit))
+        for varName in self.optVarsInit['initial'].keys():
+          self.optVarsInit['initial'][varName] = dict.fromkeys(self.optTraj, self.optVarsInit['initial'][varName][0])
+      while self.initializationSampler.amIreadyToProvideAnInput():
+        self.initializationSampler.localGenerateInput(None,None)
+        self.initializationSampler.inputInfo['prefix'] = self.initializationSampler.counter
+        sampledVars = self.initializationSampler.inputInfo['SampledVars']
+        for varName, value in sampledVars.items():
+          self.optVarsInit['initial'][varName][self.initializationSampler.counter] = np.atleast_1d(value)
+        self.initializationSampler.counter +=1
+
+    # NOTE: counter['varsUpdate'] needs to be set AFTER self.optTraj length is set by the sampler (if used exclusively)
+    self.counter['mdlEval'] = 0
+    self.counter['varsUpdate'] = [0]*len(self.optTraj)
+    self.optTrajLive = copy.deepcopy(self.optTraj)
+
+    self.mdlEvalHist = self.assemblerDict['TargetEvaluation'][0][3]
+    # check if the TargetEvaluation feature and target spaces are consistent
+    ins  = self.mdlEvalHist.getVars("input")
+    outs = self.mdlEvalHist.getVars("output")
+    for varName in self.fullOptVars:
+      if varName not in ins:
+        self.raiseAnError(RuntimeError,"the optimization variable "+varName+" is not contained in the TargetEvaluation object "+self.mdlEvalHist.name)
+    if self.objVar not in outs:
+      self.raiseAnError(RuntimeError,"the optimization objective variable "+self.objVar+" is not contained in the TargetEvaluation object "+self.mdlEvalHist.name)
+    self.objSearchingROM = SupervisedLearning.returnInstance('SciKitLearn', self, **{'SKLtype':'neighbors|KNeighborsRegressor', 'Features':','.join(list(self.fullOptVars)), 'Target':self.objVar, 'n_neighbors':1,'weights':'distance'})
+    self.solutionExport = solutionExport
+    if self.solutionExport is None:
+      self.raiseAnError(IOError,'The results of optimization cannot be obtained without a SolutionExport defined in the Step!')
+
+    if type(solutionExport).__name__ not in ["PointSet","DataSet"]:
+      self.raiseAnError(IOError,'solutionExport type must be a PointSet or DataSet. Got '+\
+                                 type(solutionExport).__name__+ '!')
+
+    if 'Function' in self.assemblerDict.keys():
+      self.constraintFunction = self.assemblerDict['Function'][0][3]
+      if 'constrain' not in self.constraintFunction.availableMethods():
+        self.raiseAnError(IOError,'the function provided to define the constraints must have an implemented method called "constrain"')
+
+    # initialize dictionary entries
+    # TODO a bunch of the gradient-level trajectory initializations should be moved here.
+    for traj in self.optTraj:
+      self.optVars[traj]            = self.getOptVars()
+      self.submissionQueue[traj]    = deque()
+
+    #check initial point array consistency
+    rightLen = len(self.optTraj) #the hypothetical correct length
+    for var in self.getOptVars():
+      haveLen = len(self.optVarsInit['initial'][var])
+      if haveLen != rightLen:
+        self.raiseAnError(RuntimeError,'The number of trajectories for variable "{}" is incorrect!  Got {} but expected {}!  Check the <initial> block.'.format(var,haveLen,rightLen))
+
+    # check the constraint here to check if the initial values violate it
+    varK = {}
+    for trajInd in self.optTraj:
+      for varName in self.getOptVars():
+        varK[varName] = self.optVarsInit['initial'][varName][trajInd]
+      satisfied, _ = self.checkConstraint(varK)
+      if not satisfied:
+        # get a random value between the the lower and upper bounds
+        self.raiseAWarning("the initial values specified for trajectory "+str(trajInd)+" do not satify the contraints. Picking random ones!")
+        randomGuessesCnt = 0
+        while not satisfied and randomGuessesCnt < self.constraintHandlingPara['innerLoopLimit']:
+          for varName in self.getOptVars():
+            varK[varName] = self.optVarsInit['lowerBound'][varName]+randomUtils.random()*self.optVarsInit['ranges'][varName]
+            self.optVarsInit['initial'][varName][trajInd] = varK[varName]
+          satisfied, _ = self.checkConstraint(varK)
+        if not satisfied:
+          self.raiseAnError(Exception,"It was not possible to find any initial values that could satisfy the constraints for trajectory "+str(trajInd))
+
+    # extend multivalue variables (aka vector variables, or variables with "shape")
+    ## TODO someday take array of initial values from a DataSet
+    for var,shape in self.variableShapes.items():
+      if np.prod(shape) > 1:
+        for traj in self.optTraj:
+          baseVal = self.optVarsInit['initial'][var][traj]
+          newVal = np.ones(shape)*baseVal
+          self.optVarsInit['initial'][var][traj] = newVal
+
+    if self.initSeed is not None:
+      randomUtils.randomSeed(self.initSeed)
+
+    self.localInitialize(solutionExport=solutionExport)
+
+  ###############
+  # Run Methods #
+  ###############
+  def amIreadyToProvideAnInput(self):
+    """
+      This is a method that should be called from any user of the optimizer before requiring the generation of a new input.
+      This method act as a "traffic light" for generating a new input.
+      Reason for not being ready could be for example: exceeding number of model evaluation, convergence criteria met, etc.
+      @ In, None
+      @ Out, ready, bool, indicating the readiness of the optimizer to generate a new input.
+    """
+    ready = True if self.counter['mdlEval'] < self.limit['mdlEval'] else False
+    if not ready:
+      self.raiseAMessage('Reached limit for number of model evaluations!')
+    convergence = self.checkConvergence()
+    ready = self.localStillReady(ready)
+    return ready
+
+  ###################
+  # Utility Methods #
+  ###################
+  def cancelJobs(self, ids):
+    """
+      Flags jobs with the ids provided to be cancelled.
+      @ In, ids, list(str), prefixes/job IDs that need to be cancelled
+      @ Out, None
+    """
+    # first knock them out of the submission queues
+    for traj in self.optTraj:
+      toRemove = []
+      for job in self.submissionQueue[traj]:
+        prefix = job['prefix']
+        if prefix in ids:
+          toRemove.append(job)
+          ids.remove(prefix)
+          self.raiseADebug('Removing {} from run list by request'.format(prefix))
+      for r in toRemove:
+        self.submissionQueue[traj].remove(r)
+    # then put them in the termination list
+    self._jobsToEnd.extend(ids)
+
+  def checkConstraint(self, optVars):
+    """
+      Method to check whether a set of decision variables satisfy the constraint or not in UNNORMALIZED input space
+      @ In, optVars, dict, dictionary containing the value of decision variables to be checked, in form of {varName: varValue}
+      @ Out, satisfaction, tuple, (bool,list) => (variable indicating the satisfaction of constraints at the point optVars, masks for the under/over violations)
+    """
+    violatedConstrains = {'internal':[],'external':[]}
+    if self.constraintFunction == None:
+      satisfied = True
+    else:
+      constraintVars = dict(optVars)
+      constraintVars.update(self.constants)
+      satisfied = True if self.constraintFunction.evaluate("constrain", constraintVars) == 1 else False
+      if not satisfied:
+        self.raiseAWarning('The proposed evaluation point violates the constraint function!')
+        self.raiseADebug('Offending point:', constraintVars)
+        violatedConstrains['external'].append(self.constraintFunction.name)
+    for var in optVars:
+      varSatisfy=True
+      # this should work whether optVars is an array or a single value
+      check = np.atleast_1d(optVars[var])
+      overMask = check > self.optVarsInit['upperBound'][var]
+      underMask = check < self.optVarsInit['lowerBound'][var]
+      if np.sum(overMask)+np.sum(underMask) > 0:
+        self.raiseAWarning('A variable violated boundary constraints! Details below (enable DEBUG printing)')
+        self.raiseADebug('Violating values: "{}"={}'.format(var,optVars[var]))
+        satisfied = False
+        violatedConstrains['internal'].append( (var,underMask,overMask) )
+
+    satisfied = self.localCheckConstraint(optVars, satisfied)
+    satisfaction = satisfied,violatedConstrains
+    return satisfaction
+
+  @abc.abstractmethod
+  def checkConvergence(self):
+    """
+      Method to check whether the convergence criteria has been met.
+      @ In, none,
+      @ Out, convergence, bool, variable indicating whether the convergence criteria has been met.
+    """
+
+  def checkInputs(self,inp):
+    """
+      Checks that all the values of the optimization variables have been set for the point.
+      @ In, inp, dict, {var:val} input space point
+      @ Out, okay, bool, True if all inputs there, False if not
+      @ Out, missing, list, list of missing variables
+    """
+    missing = []
+    for var in self.getOptVars():
+      if inp.get(var,None) is None:
+        missing.append(var)
+        okay = False
+    return len(missing)==0,missing
+
+  def checkIfBetter(self,a,b):
+    """
+      Checks if a is preferable to b for this optimization problem.  Helps mitigate needing to keep
+      track of whether a minimization or maximation problem is being run.
+      @ In, a, float, value to be compared
+      @ In, b, float, value to be compared against
+      @ Out, checkIfBetter, bool, True if a is preferable to b for this optimization
+    """
+    if self.optType == 'min':
+      return a <= b
+    elif self.optType == 'max':
+      return a >= b
+
+  @abc.abstractmethod
+  def clearCurrentOptimizationEffort(self):
+    """
+      Used to inform the subclass optimization effor that it needs to forget whatever opt data it is using
+      for the current point (for example, gradient determination points) so that we can start new.
+      @ In, None
+      @ Out, None
+    """
+    # README: this method is necessary because the base class optimizer doesn't know what needs to be reset in the
+    #         subclass, but the subclass doesn't know when it needs to call this method.
+    pass
+
+  @abc.abstractmethod
+  def _createEvaluationIdentifier(self, *args, **kwargs):
+    """
+      Creates a unique ID to identifiy particular realizations as they return from the JobHandler.
+      Inputs should be specific to the needs of individual optimizers.
+      @ In, args, list, list of arguments
+      @ In, kwargs, dict, dictionary of keyword arguments
+      @ Out, identifier, str, the evaluation identifier
+    """
+    pass
+
+  def denormalizeData(self, optVars):
+    """
+      Method to normalize the data
+      @ In, optVars, dict, dictionary containing the value of decision variables to be deormalized, in form of {varName: varValue}
+      @ Out, optVarsDenorm, dict, dictionary containing the value of denormalized decision variables, in form of {varName: varValue}
+    """
+    optVarsDenorm = {}
+    for var in optVars.keys():
+      try:
+        optVarsDenorm[var] = optVars[var]*(self.optVarsInit['upperBound'][var]-self.optVarsInit['lowerBound'][var])+self.optVarsInit['lowerBound'][var]
+      except KeyError:
+        optVarsDenorm[var] = optVars[var]
+    return optVarsDenorm
 
   def endJobRunnable(self):
     """
@@ -267,32 +692,13 @@ class Optimizer(utils.metaclass_insert(abc.ABCMeta,BaseType),Assembler):
     """
     return self._endJobRunnable
 
-  def getInitParams(self):
+  def _expandVectorVariables(self):
     """
-      This function is called from the base class to print some of the information inside the class.
-      Whatever is permanent in the class and not inherited from the parent class should be mentioned here
-      The information is passed back in the dictionary. No information about values that change during the simulation are allowed
+      Normally used to extend variables; in the Optimizer, we do that in localGenerateInput
       @ In, None
-      @ Out, paramDict, dict, dictionary containing the parameter names as keys
-                              and each parameter's initial value as the dictionary values
+      @ Out, None
     """
-    paramDict = {}
-    for variable in self.optVars:
-      paramDict[variable] = 'is sampled as a decision variable'
-    paramDict['limit_mdlEval' ]        = self.limit['mdlEval']
-    paramDict['limit_optIter']         = self.limit['varsUpdate']
-    paramDict['initial seed' ]         = self.initSeed
-    paramDict.update(self.localGetInitParams())
-    return paramDict
-
-  def localGetInitParams(self):
-    """
-      Method used to export to the printer in the base class the additional PERMANENT your local class have
-      @ In, None
-      @ Out, paramDict, dict, dictionary containing the parameter names as keys
-                              and each parameter's initial value as the dictionary values
-    """
-    return {}
+    pass
 
   def getCurrentSetting(self):
     """
@@ -316,133 +722,64 @@ class Optimizer(utils.metaclass_insert(abc.ABCMeta,BaseType),Assembler):
     paramDict.update(self.localGetCurrentSetting())
     return paramDict
 
-  def localGetCurrentSetting(self):
+  def getInitParams(self):
     """
-      Returns a dictionary with class specific information regarding the
-      current status of the object.
+      This function is called from the base class to print some of the information inside the class.
+      Whatever is permanent in the class and not inherited from the parent class should be mentioned here
+      The information is passed back in the dictionary. No information about values that change during the simulation are allowed
       @ In, None
       @ Out, paramDict, dict, dictionary containing the parameter names as keys
                               and each parameter's initial value as the dictionary values
     """
-    return {}
+    paramDict = {}
+    for variable in self.getOptVars():
+      paramDict[variable] = 'is sampled as a decision variable'
+    paramDict['limit_mdlEval' ]        = self.limit['mdlEval']
+    paramDict['limit_optIter']         = self.limit['varsUpdate']
+    paramDict['initial seed' ]         = self.initSeed
+    paramDict.update(self.localGetInitParams())
+    return paramDict
 
-  def initialize(self,externalSeeding=None,solutionExport=None):
+  @abc.abstractmethod
+  def _getJobsByID(self):
     """
-      This function should be called every time a clean optimizer is needed. Called before takeAstep in <Step>
-      @ In, externalSeeding, int, optional, external seed
-      @ In, solutionExport, DataObject, optional, a PointSet to hold the solution
-      @ Out, None
-    """
-    self.counter['mdlEval'] = 0
-    self.counter['varsUpdate'] = [0]*len(self.optTraj)
-    self.nVar = len(self.optVars)
-
-    self.mdlEvalHist = self.assemblerDict['TargetEvaluation'][0][3]
-    self.objSearchingROM = SupervisedLearning.returnInstance('SciKitLearn', self, **{'SKLtype':'neighbors|KNeighborsRegressor', 'Features':','.join(list(self.optVars)), 'Target':self.objVar, 'n_neighbors':1,'weights':'distance'})
-    self.solutionExport = solutionExport
-
-    if solutionExport != None and type(solutionExport).__name__ != "HistorySet":
-      self.raiseAnError(IOError,'solutionExport type is not a HistorySet. Got '+ type(solutionExport).__name__+ '!')
-
-    if 'Function' in self.assemblerDict.keys():
-      self.constraintFunction = self.assemblerDict['Function'][0][3]
-      if 'constrain' not in self.constraintFunction.availableMethods():
-        self.raiseAnError(IOError,'the function provided to define the constraints must have an implemented method called "constrain"')
-
-    if self.initSeed != None: Distributions.randomSeed(self.initSeed)
-
-    # specializing the self.localInitialize()
-    if solutionExport != None : self.localInitialize(solutionExport=solutionExport)
-    else                      : self.localInitialize()
-
-  def localInitialize(self,solutionExport=None):
-    """
-      Use this function to add initialization features to the derived class
-      it is call at the beginning of each step
-      @ In, solutionExport, DataObject, optional, a PointSet to hold the solution
-      @ Out, None
-    """
-    pass # To be overwritten by subclass
-
-  def amIreadyToProvideAnInput(self): #inLastOutput=None):
-    """
-      This is a method that should be called from any user of the optimizer before requiring the generation of a new input.
-      This method act as a "traffic light" for generating a new input.
-      Reason for not being ready could be for example: exceeding number of model evaluation, convergence criteria met, etc.
+      Overwritten by the base class; obtains new solution export values
       @ In, None
-      @ Out, ready, bool, indicating the readiness of the optimizer to generate a new input.
+      @ Out, None
     """
-    ready = True if self.counter['mdlEval'] < self.limit['mdlEval'] else False
-    convergence = self.checkConvergence()
-    ready = self.localStillReady(ready, convergence)
-    return ready
-
-  def localStillReady(self,ready, convergence = False): #,lastOutput=None
-    """
-      Determines if optimizer is ready to provide another input.  If not, and if jobHandler is finished, this will end sampling.
-      @ In, ready, bool, variable indicating whether the caller is prepared for another input.
-      @ In, convergence, bool, optional, variable indicating whether the convergence criteria has been met.
-      @ Out, ready, bool, variable indicating whether the caller is prepared for another input.
-    """
-    return ready # To be overwritten by subclass
-
+    pass
 
   def getLossFunctionGivenId(self, evaluationID):
     """
       Method to get the Loss Function value given an evaluation ID
       @ In, evaluationID, string, the evaluation identifier (prefix)
-      @ Out, functionValue, float, the loss function value
+      @ Out, objeciveValue, float, the loss function value
     """
-    objective  = self.mdlEvalHist.getParametersValues('outputs', nodeId = 'RecontructEnding')[self.objVar]
-    prefix = self.mdlEvalHist.getMetadata('prefix',nodeId='RecontructEnding')
-    if len(prefix) > 0 and utils.returnIdSeparator() in prefix[0]:
-      # ensemble model id modification
-      # FIXME: Need to find a better way to handle this case
-      prefix = [key.split(utils.returnIdSeparator())[-1] for key in prefix]
-    search = dict(zip(prefix, objective))
-    functionValue = search.get(evaluationID,None)
-    return functionValue
+    # get matching realization by matching "prefix"
+    # TODO the EnsembleModel prefix breaks this pattern!
+    _,rlz  = self.mdlEvalHist.realization(matchDict={'prefix':evaluationID})
+    # if no match found, return None
+    if rlz is None:
+      return None
+    # otherwise, return value (float assures single value)
+    return float(rlz[self.objVar])
 
-  def lossFunctionEval(self, optVars):
+  def getOptVars(self):
     """
-      Method to evaluate the loss function based on all model evaluation.
-      @ In, optVars, dict, dictionary containing the values of decision variables to be evaluated
-                           optVars should have the form {varName1:[value11, value12,...value1n], varName2:[value21, value22,...value2n]...}
-      @ Out, lossFunctionValue, numpy array, loss function values corresponding to each point in optVars
+      Returns the variables in the active optimization space
+      @ In, None
+      @ Out, optVars, list(string), variables in the current optimization space
     """
-    tempDict = copy.copy(self.mdlEvalHist.getParametersValues('inputs', nodeId = 'RecontructEnding'))
-    tempDict.update(self.mdlEvalHist.getParametersValues('outputs', nodeId = 'RecontructEnding'))
-    for key in tempDict.keys(): tempDict[key] = np.asarray(tempDict[key])
+    return self.fullOptVars
 
-    self.objSearchingROM.train(tempDict)
-    if self.gradDict['normalize']: optVars = self.denormalizeData(optVars)
-    for key in optVars.keys(): optVars[key] = np.atleast_1d(optVars[key])
-    lossFunctionValue = self.objSearchingROM.evaluate(optVars)[self.objVar]
-    if self.optType == 'min':           return lossFunctionValue
-    else:                               return lossFunctionValue*-1.0
-
-  def checkConstraint(self, optVars):
+  def _incrementCounter(self):
     """
-      Method to check whether a set of decision variables satisfy the constraint or not
-      @ In, optVars, dict, dictionary containing the value of decision variables to be checked, in form of {varName: varValue}
-      @ Out, satisfaction, tuple, (bool,list) => (variable indicating the satisfaction of constraints at the point optVars, list of the violated constrains)
+      Increments counter and sets up prefix.
+      @ In, None
+      @ Out, None
     """
-    violatedConstrains = {'internal':[],'external':[]}
-    if self.constraintFunction == None:
-      satisfied = True
-    else:
-      satisfied = True if self.constraintFunction.evaluate("constrain",optVars) == 1 else False
-      if not satisfied: violatedConstrains['external'].append(self.constraintFunction.name)
-    if self.gradDict['normalize']: optVars = self.denormalizeData(optVars)
-    for var in optVars:
-      if optVars[var] > self.optVarsInit['upperBound'][var] or optVars[var] < self.optVarsInit['lowerBound'][var]:
-        satisfied = False
-        if optVars[var] > self.optVarsInit['upperBound'][var]: violatedConstrains['internal'].append([var,self.optVarsInit['upperBound'][var]])
-        if optVars[var] < self.optVarsInit['lowerBound'][var]: violatedConstrains['internal'].append([var,self.optVarsInit['lowerBound'][var]])
-
-    satisfied = self.localCheckConstraint(optVars, satisfied)
-    satisfaction = satisfied,violatedConstrains
-    return satisfaction
+    self.counter['mdlEval'] +=1 #since we are creating the input for the next run we increase the counter and global counter
+    self.inputInfo['prefix'] = str(self.counter['mdlEval'])
 
   @abc.abstractmethod
   def localCheckConstraint(self, optVars, satisfaction = True):
@@ -454,14 +791,6 @@ class Optimizer(utils.metaclass_insert(abc.ABCMeta,BaseType),Assembler):
     """
     return satisfaction
 
-  @abc.abstractmethod
-  def checkConvergence(self):
-    """
-      Method to check whether the convergence criteria has been met.
-      @ In, none,
-      @ Out, convergence, bool, variable indicating whether the convergence criteria has been met.
-    """
-
   def normalizeData(self, optVars):
     """
       Method to normalize the data
@@ -470,104 +799,50 @@ class Optimizer(utils.metaclass_insert(abc.ABCMeta,BaseType),Assembler):
     """
     optVarsNorm = {}
     for var in optVars.keys():
-      optVarsNorm[var] = (optVars[var]-self.optVarsInit['lowerBound'][var])/(self.optVarsInit['upperBound'][var]-self.optVarsInit['lowerBound'][var])
+      try:
+        optVarsNorm[var] = (optVars[var]-self.optVarsInit['lowerBound'][var])/(self.optVarsInit['upperBound'][var]-self.optVarsInit['lowerBound'][var])
+      except KeyError:
+        optVarsNorm[var] = optVars[var]
     return optVarsNorm
 
-  def denormalizeData(self, optVars):
+  def _numberOfSamples(self,traj=None):
     """
-      Method to normalize the data
-      @ In, optVars, dict, dictionary containing the value of decision variables to be deormalized, in form of {varName: varValue}
-      @ Out, optVarsDenorm, dict, dictionary containing the value of denormalized decision variables, in form of {varName: varValue}
+      Calculates the number of independent variables (one for each scalar plus each scalar in each vector).
+      @ In, traj, int, optional, if provided then only count variables in current trajectory
+      @ Out, _numberOfSamples, int, total number of independent values that need sampling
     """
-    optVarsDenorm = {}
-    for var in optVars.keys():
-      optVarsDenorm[var] = optVars[var]*(self.optVarsInit['upperBound'][var]-self.optVarsInit['lowerBound'][var])+self.optVarsInit['lowerBound'][var]
-    return optVarsDenorm
+    return sum(np.prod(self.variableShapes[var]) for var in self.getOptVars())
 
-  def generateInput(self,model,oldInput):
+  def removeConvergedTrajectory(self,convergedTraj):
     """
-      Method to generate input for model to run
-      @ In, model, model instance, it is the instance of a RAVEN model
-      @ In, oldInput, list, a list of the original needed inputs for the model (e.g. list of files, etc. etc)
-      @ Out, generateInput, tuple(int,dict), (1,realization dictionary)
-    """
-    self.counter['mdlEval'] +=1                              #since we are creating the input for the next run we increase the counter and global counter
-    self.inputInfo['prefix'] = str(self.counter['mdlEval'])
-
-    model.getAdditionalInputEdits(self.inputInfo)
-    self.localGenerateInput(model,oldInput)
-    #### CONSTANT VARIABLES ####
-    if len(self.constants) > 0:
-      self.values.update(self.constants)
-    self.raiseADebug('Found new input to evaluate:',self.values)
-    return 0,model.createNewInput(oldInput,self.type,**self.inputInfo)
-
-  @abc.abstractmethod
-  def localGenerateInput(self,model,oldInput):
-    """
-      This class need to be overwritten since it is here that the magic of the optimizer happens.
-      After this method call the self.inputInfo should be ready to be sent to the model
-      @ In, model, model instance, it is the instance of a RAVEN model
-      @ In, oldInput, list, a list of the original needed inputs for the model (e.g. list of files, etc. etc)
+      Appropriate process for clearing out converged histories.
+      @ In, convergedTraj, int, trajectory that has converged and might need to be removed
       @ Out, None
     """
-    pass
+    for t,traj in enumerate(self.optTrajLive):
+      if traj == convergedTraj:
+        self.optTrajLive.pop(t)
+        break
 
-  def finalizeActualSampling(self,jobObject,model,myInput):
+  def proposeNewPoint(self,traj,point):
     """
-      This function is used by optimizers that need to collect information from a finished run.
-      Provides a generic interface that all optimizers will use, for specifically
-      handling any sub-class, the localFinalizeActualSampling should be overridden
-      instead, as finalizeActualSampling provides only generic functionality
-      shared by all optimizers and will in turn call the localFinalizeActualSampling
-      before returning.
-      @ In, jobObject, instance, an instance of a JobHandler
-      @ In, model, model instance, it is the instance of a RAVEN model
-      @ In, myInput, list, the generating input
-    """
-    self.localFinalizeActualSampling(jobObject,model,myInput)
-
-  def localFinalizeActualSampling(self,jobObject,model,myInput):
-    """
-      Overwrite only if you need something special at the end of each run....
-      This function is used by optimizers that need to collect information from the just ended run
-      @ In, jobObject, instance, an instance of a JobHandler
-      @ In, model, model instance, it is the instance of a RAVEN model
-      @ In, myInput, list, the generating input
-    """
-    pass
-
-  def handleFailedRuns(self,failedRuns):
-    """
-      Collects the failed runs from the Step and allows optimizer to handle them individually if need be.
-      @ In, failedRuns, list, list of JobHandler.ExternalRunner objects
+      Sets a proposed point for the next in the opt chain.  Recommended to be overwritten in subclasses.
+      @ In, traj, int, trajectory who is getting proposed point
+      @ In, point, dict, new input space point as {var:val}
       @ Out, None
     """
-    self.raiseADebug('===============')
-    self.raiseADebug('| RUN SUMMARY |')
-    self.raiseADebug('===============')
-    if len(failedRuns)>0:
-      self.raiseAWarning('There were %i failed runs!  Run with verbosity = debug for more details.' %(len(failedRuns)))
-      for run in failedRuns:
-        metadata = run.getMetadata()
-        self.raiseADebug('  Run number %s FAILED:' %run.identifier,run.command)
-        self.raiseADebug('      return code :',run.getReturnCode())
-        if metadata is not None:
-          self.raiseADebug('      sampled vars:')
-          for v,k in metadata['SampledVars'].items():
-            self.raiseADebug('         ',v,':',k)
-    else:
-      self.raiseADebug('All runs completed without returning errors.')
-    self._localHandleFailedRuns(failedRuns)
-    self.raiseADebug('===============')
-    self.raiseADebug('  END SUMMARY  ')
-    self.raiseADebug('===============')
+    point = copy.deepcopy(point)
+    self.optVarsHist[traj][self.counter['varsUpdate'][traj]] = point
+    self.recommendedOptPoint[traj] = point
 
-  def _localHandleFailedRuns(self,failedRuns):
+  def updateVariableHistory(self,data,traj):
     """
-      Specialized method for optimizers to handle failed runs.  Defaults to failing runs.
-      @ In, failedRuns, list, list of JobHandler.ExternalRunner objects
+      Stores new historical points into the optimization history.
+      @ In, data, dict, UNNORMALIZED new input space entries as {var:#, var:#}
+      @ In, traj, int, integer label of the current trajectory of interest
       @ Out, None
     """
-    if len(failedRuns)>0:
-      self.raiseAnError(IOError,'There were failed runs; aborting RAVEN.')
+    # collect static vars, values
+    allData = {}
+    allData.update(self.normalizeData(data)) # data point not normalized a priori
+    self.optVarsHist[traj][self.counter['varsUpdate'][traj]] = copy.deepcopy(allData)

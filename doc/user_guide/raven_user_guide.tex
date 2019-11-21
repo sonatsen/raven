@@ -246,7 +246,7 @@ showstringspaces=false            %
 %
 % Set the title, author, and date
 %
-\title{RAVEN Theory Manual and User Guide}
+\title{RAVEN User Guide}
 %\author{%
 %\begin{tabular}{c} Author 1 \\ University1 \\ Mail1 \\ \\
 %Author 3 \\ University3 \\ Mail3 \end{tabular} \and
@@ -264,8 +264,10 @@ showstringspaces=false            %
 \\Paul W. Talbot
 \\Daniel P. Maljovec
 \\Curtis Smith
+\\Jia Zhou
+\\Pralhad Burli
 }
-% \\James B. Tompkins}   Just people who actually ``developed'' a significant capability in the code should be placed here. Andrea
+%Just people who actually ``developed'' a significant capability in the code should be placed here. Andrea
 %\author{\textbf{\textit{Main Developers:}}  \\Andrea Alfonsi}
 %\affil{Idaho National Laboratory, Idaho Falls, ID 83402}
 %\\\{cristian.rabiti, andrea.alfonsi, joshua.cogliati, diego.mandelli, robert.kinoshita, ramazan.sen\}@inl.gov}
@@ -278,10 +280,10 @@ showstringspaces=false            %
 % ---------------------------------------------------------------------------- %
 % Set some things we need for SAND reports. These are mandatory
 %
-\SANDnum{INL/EXT-16-38178}
-\SANDprintDate{March 2017}
-\SANDauthor{Andrea Alfonsi, Cristian Rabiti, Diego Mandelli, Joshua Cogliati, Congjian Wang, Paul W. Talbot, Daniel P. Maljovec, Curtis Smith}
-\SANDreleaseType{Revision 1}
+\SANDnum{INL/EXT-18-44465}
+\SANDprintDate{\today}
+\SANDauthor{Andrea Alfonsi, Cristian Rabiti, Diego Mandelli, Joshua Cogliati, Congjian Wang, Paul W. Talbot, Daniel P. Maljovec, Curtis Smith, Jia Zhou, Pralhad Burli}
+\SANDreleaseType{Revision 0 draft}
 
 
 % ---------------------------------------------------------------------------- %
@@ -397,20 +399,18 @@ showstringspaces=false            %
     \SANDmain		% Start the main part of the report
 
 \input{introduction.tex}
-\input{ravenOverview.tex}
-\input{ravenStructure.tex}
-\input{manualFormats.tex}
-\input{manualStructure.tex}
-\input{singleRunAndPlot.tex}
-\input{forwardSampling.tex}
-\input{adaptiveSampling.tex}
+\input{ravenTutorial.tex}
+\input{forwardSamplingExample.tex}
+\input{adaptiveSamplingExample.tex}
 \input{restartSampling.tex}
-\input{reducedOrderModeling.tex}
-\input{statisticalAnalysis.tex}
-\input{dataMining.tex}
+\input{reducedOrderModelingExample.tex}
+\input{statisticalAnalysisExample.tex}
+\input{dataMiningExample.tex}
+\input{optimizing.tex}
+\input{ensembleModel.tex}
 \clearpage
 \begin{appendices}
-  \input{HowToRun.tex}
+  %\input{HowToRun.tex}
   \section{Document Version Information}
   \input{../version.tex}
 \end{appendices}

@@ -23,8 +23,14 @@ import warnings
 warnings.simplefilter('default',DeprecationWarning)
 #End compatibility block for Python 3
 
-from PySide import QtCore as qtc
-from PySide import QtGui as qtg
+try:
+  from PySide import QtCore as qtc
+  from PySide import QtGui as qtg
+  from PySide import QtGui as qtw
+except ImportError as e:
+  from PySide2 import QtCore as qtc
+  from PySide2 import QtGui as qtg
+  from PySide2 import QtWidgets as qtw
 
 from sys import path
 
@@ -40,7 +46,7 @@ import re
 import random
 import numpy as np
 
-class HierarchyWindow(qtg.QMainWindow):
+class HierarchyWindow(qtw.QMainWindow):
   """
     A UI for visualizing hierarchical objects, specifically the hierarchical
     clustering made available from scipy.
@@ -62,7 +68,7 @@ class HierarchyWindow(qtg.QMainWindow):
     self.views = []
     self.resize(800,600)
     self.setCentralWidget(None)
-    self.setDockOptions(qtg.QMainWindow.AllowNestedDocks)
+    self.setDockOptions(qtw.QMainWindow.AllowNestedDocks)
 
     self.debug = debug
     self.engine = engine
@@ -84,6 +90,31 @@ class HierarchyWindow(qtg.QMainWindow):
       action = newMenu.addAction(subclass.__name__)
       action.triggered.connect(functools.partial(self.addNewView,action.text()))
 
+  def test(self):
+    """
+        Method for testing this UI. It will generate one of each of the
+        subclass views of the BaseHierarchicalView and call each of the signaled
+        events on each view.
+        @ In, None
+        @ Out, None
+    """
+    for viewClass in BaseHierarchicalView.__subclasses__():
+      self.addNewView(viewClass.__name__)
+
+    labels = self.getLabels()
+    self.decreaseLevel()
+    self.increaseLevel()
+    self.setColor(0,qtg.QColor(255,0,0))
+
+    for view in self.views:
+      view.updateScene()
+      view.colorChanged()
+      view.levelChanged()
+      view.selectionChanged()
+
+      view.test()
+
+
   def createDockWidget(self,view):
     """
       Method to create a new child dock widget of a specified type.
@@ -91,11 +122,11 @@ class HierarchyWindow(qtg.QMainWindow):
         that will be added to this window.
       @ Out, None
     """
-    dockWidget = qtg.QDockWidget()
+    dockWidget = qtw.QDockWidget()
     dockWidget.setWindowTitle(view.windowTitle())
 
     if view.scrollable:
-      scroller = qtg.QScrollArea()
+      scroller = qtw.QScrollArea()
       scroller.setWidget(view)
       scroller.setWidgetResizable(True)
       dockWidget.setWidget(scroller)
@@ -188,7 +219,7 @@ class HierarchyWindow(qtg.QMainWindow):
 
     linkage = self.engine.linkage
 
-    self.labels = np.zeros(len(self.engine.features.values()[0]))
+    self.labels = np.zeros(len(self.engine.outputDict['outputs']['labels']))
 
     heads = {}
 
@@ -238,7 +269,7 @@ class HierarchyWindow(qtg.QMainWindow):
     """
     if idx not in self.colorMap:
       # self.colorMap[idx] = qtg.QColor(*tuple(255*np.random.rand(3)))
-      self.colorMap[idx] = qtg.QColor(colors.colorCycle.next())
+      self.colorMap[idx] = qtg.QColor(next(colors.colorCycle))
 
     return self.colorMap[idx]
 
@@ -248,8 +279,9 @@ class HierarchyWindow(qtg.QMainWindow):
       @ In, None
       @ Out, data, nparray, the data being used by this window.
     """
-    data = np.zeros((len(self.engine.features.values()[0]),len(self.engine.features.keys())))
-    for col,value in enumerate(self.engine.features.values()):
+    data = np.zeros((len(self.engine.features),
+                     len(self.engine.outputDict['inputs'])))
+    for col,value in enumerate(self.engine.outputDict['inputs']):
       data[:,col] = value
     return data
 
@@ -257,9 +289,9 @@ class HierarchyWindow(qtg.QMainWindow):
     """
       Get the dimensionality of the underlying data.
       @ In, None
-      @ Out, dimensionality, int, the dimensionality of the data being used.
+      @ Out, dimensionality, string list, the dimensions of the data being used.
     """
-    return self.engine.features.keys()
+    return self.engine.features
 
   def getSelectedIndices(self):
     """

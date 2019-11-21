@@ -36,12 +36,12 @@ def run(self,Input):
   self.z = np.zeros(numberTimeSteps)
   self.time = np.zeros(numberTimeSteps)
 
-  self.firstVar  = Input['firstVar']
-  self.secondVar = Input['secondVar']
+  firstVar  = Input['awful.variable+name']
+  secondVar = Input['@another|awful name']
   self.z0  = Input['z0']
 
-  self.firstOut[0] = Input['firstVar']
-  self.secondOut[0] = Input['secondVar']
+  self.firstOut[0] = firstVar
+  self.secondOut[0] = secondVar
   self.z[0] = Input['z0']
   self.time[0]= 0
 
@@ -50,5 +50,3 @@ def run(self,Input):
     self.firstOut[t+1]    = self.firstOut[t] + self.sigma*(self.secondOut[t]-self.firstOut[t]) * t_step
     self.secondOut[t+1]    = self.secondOut[t] + (self.firstOut[t]*(self.rho-self.z[t])-self.secondOut[t]) * t_step
     self.z[t+1]    = self.z[t] + (self.firstOut[t]*self.secondOut[t]-self.beta*self.z[t]) * t_step
-
-

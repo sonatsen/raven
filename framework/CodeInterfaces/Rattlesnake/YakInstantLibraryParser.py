@@ -14,8 +14,6 @@
 from __future__ import division, print_function, unicode_literals, absolute_import
 import warnings
 warnings.simplefilter('default',DeprecationWarning)
-if not 'xrange' in dir(__builtins__):
-  xrange = range
 
 import xml.etree.ElementTree as ET
 import xml.dom.minidom as pxml
@@ -65,7 +63,8 @@ class YakInstantLibraryParser():
 
     #read in cross-section files, unperturbed files
     for xmlFile in inputFiles:
-      if not os.path.exists(xmlFile.getPath()): raise IOError('The following Yak multigroup cross section library file: ' + xmlFile + ' is not found')
+      if not os.path.exists(xmlFile.getPath()):
+        raise IOError('The following Yak multigroup cross section library file: ' + xmlFile + ' is not found')
       tree = ET.parse(xmlFile.getAbsFile())
       root = tree.getroot()
       if root.tag == self.level0Element:
@@ -103,7 +102,8 @@ class YakInstantLibraryParser():
     """
     self.aliases = {}
     for xmlFile in aliasFiles:
-      if not os.path.exists(xmlFile.getPath()): raise IOError('The following Yak cross section alias file: ' + xmlFile + ' is not found!')
+      if not os.path.exists(xmlFile.getPath()):
+        raise IOError('The following Yak cross section alias file: ' + xmlFile + ' is not found!')
       aliasTree = ET.parse(xmlFile.getAbsFile())
       root = aliasTree.getroot()
       if root.tag != self.level0Element:
@@ -134,7 +134,8 @@ class YakInstantLibraryParser():
     for child in xmlNode:
       if child.tag in self.perturbableReactions:
         mt = child.tag
-        if mt not in aliasXS.keys(): aliasXS[mt] = [None]*aliasXSGroup
+        if mt not in aliasXS.keys():
+          aliasXS[mt] = [None]*aliasXSGroup
         groupIndex = child.get('gIndex')
         if groupIndex == None:
           varsList = list(var.strip() for var in child.text.strip().split(','))
@@ -212,9 +213,12 @@ class YakInstantLibraryParser():
     scatteringNode = library.find('ScatteringXS')
     self._readScatteringXS(profileNode,scatteringNode,pDict)
     for child in library:
-      if child.tag == 'name': continue
-      if child.tag == 'Profile': continue
-      if child.tag == 'ScatteringXS': continue
+      if child.tag == 'name':
+        continue
+      if child.tag == 'Profile':
+        continue
+      if child.tag == 'ScatteringXS':
+        continue
       pDict[child.tag]= self._stringSpacesToNumpyArray(child.text)
 
   def _readScatteringXS(self,profile,scattering,pDict):
@@ -389,7 +393,8 @@ class YakInstantLibraryParser():
     #fission, nu, kappa, capture, total scattering are assumed to be independent cross section types
     reactionList = perturbDict.keys()
     hasTotalScattering = False
-    if 'TotalScatteringXS' in reactionList: hasTotalScattering = True
+    if 'TotalScatteringXS' in reactionList:
+      hasTotalScattering = True
     if 'FissionXS' in reactionDict.keys():
       reactionDict['NuFissionXS'] = reactionDict['FissionXS']*reactionDict['Nu']
       reactionDict['KappaFissionXS'] = reactionDict['FissionXS']*reactionDict['Kappa']
@@ -397,7 +402,8 @@ class YakInstantLibraryParser():
     else:
       reactionDict['AbsorptionXS'] = copy.copy(reactionDict['CaptureXS'])
     reactionDict['TotalXS'] = reactionDict['AbsorptionXS'] + reactionDict['TotalScatteringXS']
-    if hasTotalScattering: #total scattering are perturbed
+    if hasTotalScattering:
+      #total scattering are perturbed
       #recalculate Scattering Cross Sections
       for g in range(self.nGroup):
         if aliasType == 'rel':
@@ -423,8 +429,10 @@ class YakInstantLibraryParser():
       @ Out, None
     """
     for child in xmlNode:
-      if child.tag == 'name': continue
-      if child.tag == 'Profile': continue
+      if child.tag == 'name':
+        continue
+      if child.tag == 'Profile':
+        continue
       if child.tag in reactionDict.keys() and child.tag != 'ScatteringXS':
         child.text = '  '.join(['%.5e' % num for num in reactionDict[child.tag]])
       elif child.tag in reactionDict.keys() and child.tag == 'ScatteringXS':
@@ -457,10 +465,10 @@ class YakInstantLibraryParser():
       for child in root:
         for mat in child:
           matID = mat.attrib['ID'].strip()
-          if matID not in self.aliases.keys(): continue
+          if matID not in self.aliases.keys():
+            continue
           self._replaceXMLNodeText(mat,self.pertLib[matID])
 
       toWrite = self._prettify(tree)
       newFile.writelines(toWrite)
       newFile.close()
-

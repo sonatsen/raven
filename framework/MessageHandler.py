@@ -20,8 +20,6 @@ Created on Apr 20, 2015
 from __future__ import division, print_function, unicode_literals, absolute_import
 import warnings
 warnings.simplefilter('default',DeprecationWarning)
-if not 'xrange' in dir(__builtins__):
-  xrange = range
 #End compatibility block for Python 3----------------------------------------------------------------
 
 #External Modules------------------------------------------------------------------------------------
@@ -113,7 +111,7 @@ class MessageUser(object):
     tag       = kwargs.get('tag'      ,'Warning')
     color     = kwargs.get('color'    ,None     )
     msg = ' '.join(str(a) for a in args)
-    self.messageHandler.message(self,msg,str(tag),verbosity,color)
+    self.messageHandler.message(self, msg, str(tag), verbosity, color)
 
   def raiseAMessage(self,*args,**kwargs):
     """
@@ -124,11 +122,12 @@ class MessageUser(object):
                             tag, the message label (default 'Message')
       @ Out, None
     """
-    verbosity = kwargs.get('verbosity','all'    )
-    tag       = kwargs.get('tag'      ,'Message')
-    color     = kwargs.get('color'    ,None     )
+    verbosity  = kwargs.get('verbosity' ,'all'    )
+    tag        = kwargs.get('tag'       ,'Message')
+    color      = kwargs.get('color'     ,None     )
+    forcePrint = kwargs.get('forcePrint',False     )
     msg = ' '.join(str(a) for a in args)
-    self.messageHandler.message(self,msg,str(tag),verbosity,color)
+    self.messageHandler.message(self,msg,str(tag),verbosity,color,forcePrint=forcePrint)
 
   def raiseADebug(self,*args,**kwargs):
     """
@@ -151,8 +150,10 @@ class MessageUser(object):
       @ In, default, string, optional, the verbosity level to return if not found
       @ Out, verbosity, string, verbosity type (e.g. 'all')
     """
-    if hasattr(self,'verbosity'): return self.verbosity
-    else: return default
+    if hasattr(self,'verbosity'):
+      return self.verbosity
+    else:
+      return default
 
 
 class MessageHandler(object):
@@ -192,7 +193,7 @@ class MessageHandler(object):
       @ In, initDict, dict, dictionary of global options
       @ Out, None
     """
-    self.verbosity     = initDict.get('verbosity','all')
+    self.verbosity     = initDict.get('verbosity','all').lower()
     self.callerLength  = initDict.get('callerLength',40)
     self.tagLength     = initDict.get('tagLength',30)
     self.suppressErrs  = initDict['suppressErrs'] in utils.stringsThatMeanTrue() if 'suppressErrs' in initDict.keys() else False
@@ -225,7 +226,7 @@ class MessageHandler(object):
       @ Out, paint, string, formatted string
     """
     if color.lower() not in self.colors.keys():
-      self.messaage(self,'Requested color %s not recognized!  Skipping...' %color,'Warning','quiet')
+      self.message(self,'Requested color %s not recognized!  Skipping...' %color,'Warning','quiet')
       return str
     return self.colors[color.lower()]+str+self.colors['neutral']
 
@@ -259,7 +260,8 @@ class MessageHandler(object):
       @ In, obj, instance, preferably an object with a printTag method; otherwise, a string or an object
       @ Out, tag, string, string to print
     """
-    if type(obj).__name__ in ['str','unicode']: return obj
+    if type(obj).__name__ in ['str','unicode']:
+      return obj
     if hasattr(obj,'printTag'):
       tag = str(obj.printTag)
     else:
@@ -273,7 +275,8 @@ class MessageHandler(object):
       @ Out, desVerbosity, int, integer equivalent to verbosity level
     """
     localVerb = caller.getLocalVerbosity(default=self.verbosity)
-    if localVerb == None: localVerb = self.verbosity
+    if localVerb == None:
+      localVerb = self.verbosity
     desVerbosity = self.checkVerbosity(localVerb)
     return desVerbosity
 
@@ -284,7 +287,7 @@ class MessageHandler(object):
       @ Out, currentVerb, int, integer equivalent to verbosity level
     """
     if str(verb).strip().lower() not in self.verbCode.keys():
-      raise IOError('Verbosity key '+str(verb)+' not recognized!  Options are '+str(self.verbCode.keys()+[None]),'ERROR','silent')
+      raise IOError('Verbosity key '+str(verb)+' not recognized!  Options are '+str(list(self.verbCode.keys())+[None]))
     currentVerb = self.verbCode[str(verb).strip().lower()]
     return currentVerb
 
@@ -304,11 +307,12 @@ class MessageHandler(object):
     if not self.suppressErrs:
       self.printWarnings()
       # debug mode gets full traceback, others quieted
-      if verbval<3: #all, quiet, silent
+      if verbval<3:
+        #all, quiet, silent
         sys.tracebacklimit=0
       raise etype(message)
 
-  def message(self,caller,message,tag,verbosity,color=None,writeTo=sys.stdout):
+  def message(self,caller,message,tag,verbosity,color=None,writeTo=sys.stdout, forcePrint=False):
     """
       Print a message
       @ In, caller, object, the entity desiring to print a message
@@ -316,10 +320,11 @@ class MessageHandler(object):
       @ In, tag, string, the printed message type (usually Message, Debug, or Warning, and sometimes FIXME)
       @ In, verbosity, string, the print priority of the message
       @ In, color, string, optional, color to apply to message
+      @ In, forcePrint, bool, optional, force the print independetly on the verbosity level? Defaul False
       @ Out, None
     """
     verbval = self.checkVerbosity(verbosity)
-    okay,msg = self._printMessage(caller,message,tag,verbval,color)
+    okay,msg = self._printMessage(caller,message,tag,verbval,color,forcePrint)
     if tag.lower().strip() == 'warning':
       self.addWarning(message)
     if okay:
@@ -339,7 +344,7 @@ class MessageHandler(object):
     else:
       self.warningCount[index] += 1
 
-  def _printMessage(self,caller,message,tag,verbval,color=None):
+  def _printMessage(self,caller,message,tag,verbval,color=None,forcePrint=False):
     """
       Checks verbosity to determine whether something should be printed, and formats message
       @ In, caller , object, the entity desiring to print a message
@@ -347,14 +352,17 @@ class MessageHandler(object):
       @ In, tag    , string, the printed message type (usually Message, Debug, or Warning, and sometimes FIXME)
       @ In, verbval, int   , the print priority of the message
       @ In, color, string, optional, color to apply to message
+      @ In, forcePrint, bool, optional, force the print independetly on the verbosity level? Defaul False
       @ Out, (shouldIPrint,msg), tuple, shouldIPrint -> bool, indication if the print should be allowed
                                         msg          -> string, the formatted message
     """
     #allows raising standardized messages
     shouldIPrint = False
     desired = self.getDesiredVerbosity(caller)
-    if verbval <= desired: shouldIPrint=True
-    if not shouldIPrint: return False,''
+    if verbval <= desired or forcePrint:
+      shouldIPrint=True
+    if not shouldIPrint:
+      return False,''
     ctag = self.getStringFromCaller(caller)
     msg=self.stdMessage(ctag,tag,message,color)
     return shouldIPrint,msg
@@ -372,10 +380,12 @@ class MessageHandler(object):
     if self.printTime:
       curtime = time.time()-self.starttime
       msg+='('+'{:8.2f}'.format(curtime)+' sec) '
-      if self.inColor: msg = self.paint(msg,'cyan')
+      if self.inColor:
+        msg = self.paint(msg,'cyan')
     msgend = pre.ljust(self.callerLength)[0:self.callerLength] + ': '+tag.ljust(self.tagLength)[0:self.tagLength]+' -> ' + post
     if self.inColor:
-      if color is not None: #overrides other options
+      if color is not None:
+        #overrides other options
         msgend = self.paint(msgend,color)
       elif tag.lower() in self.colorDict.keys():
         msgend = self.paint(msgend,self.colorDict[tag.lower()])

@@ -2,19 +2,29 @@
  [./customSamplerFromFile]
   type = 'RavenFramework'
   input = 'test_Custom_Sampler_File.xml'
-  output = 'CustomSamplerFromFile/outCustomSampler_dump.csv CustomSamplerFromFile/outCustomSampler_dump.xml'
    csv = 'CustomSamplerFromFile/outCustomSampler_dump.csv'
-   xml = 'CustomSamplerFromFile/outCustomSampler_dump.xml'
    rel_err = 0.0001
  [../]
 
  [./customSamplerFromDataObject]
   type = 'RavenFramework'
   input = 'test_Custom_Sampler_DataObject.xml'
-  output = 'CustomSamplerFromDataObject/outCustomSampler_dump.csv CustomSamplerFromDataObject/outCustomSampler_dump.xml'
    csv = 'CustomSamplerFromDataObject/outCustomSampler_dump.csv'
-   xml = 'CustomSamplerFromDataObject/outCustomSampler_dump.xml'
    prereq = customSamplerFromFile
    rel_err = 0.0001
+ [../]
+
+ [./FromDataset]
+   type = 'RavenFramework'
+   input = 'from_dataset.xml'
+   csv = 'FromDataset/samples.csv'
+   output = 'FromDataset/samples.xml'
+ [../]
+
+ [./ByIndex]
+   type = 'RavenFramework'
+   input = 'by_index.xml'
+   csv = 'ByIndex/samples.csv'
+   output = 'ByIndex/samples.xml'
  [../]
 []

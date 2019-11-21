@@ -68,6 +68,32 @@ the settings of the calculation flow that is being performed through RAVEN:
 %
 \default{1}
 
+%%%%%% Maximum Queue Size
+\item \xmlNode{maxQueueSize}, \xmlDesc{integer, optional field},
+  specifies the number of parallel runs that can be staged for running
+  simultaneously.
+  The RAVEN architecture is inherently multithreaded where a job queue is
+  continuously monitored by a job handling thread.
+  New jobs are added to this queue as they become available from the main thread
+  of execution.
+  Since the main thread is also responsible for collecting the results of
+  previously finished jobs, it is possible that faster jobs may complete before
+  the main thread can replenish the queue.
+  By increasing this value, you are allowing RAVEN to consume more memory 
+  in order to stage more jobs, placing them in a pending job queue, with the
+  benefit that slower job collection times will be masked as the job handler
+  will flush the complete jobs and run whatever is available on the pending
+  queue.
+  With smaller values, RAVEN will consume less memory staging jobs, but there is
+  potential that the job processing thread may be starved of jobs and waste
+  parallel cycles as the code degrades to serially waiting for the main thread
+  to complete collecting finished jobs.
+  Where \xmlNode{batchSize} represents the number of jobs running,
+  \xmlNode{maxQueueSize} represents the total number of jobs running plus the
+  queued jobs. Values of \xmlNode{maxQueueSize} less than \xmlNode{batchSize}
+  will be ignored. By default, \xmlNode{maxQueueSize} will be equal to
+  \xmlNode{batchSize}.
+
 %%%%%% Sequence
 \item \xmlNode{Sequence}, \xmlDesc{comma separated string, required field}, is
 an ordered list of the step names that RAVEN will run (see
@@ -135,9 +161,9 @@ If this flag is set to:
 \begin{itemize}
  \item  \textbf{\texttt{False}}, the internal parallelism is employed using multi-threading (i.e. 1 processor, multiple threads equal to the \xmlNode{batchSize}).
 \\\nb This ``parallelism mode'' runs multiple instances of the Model in a single processor. If the evaluation of the model is memory intensive (i.e. it uses a lot of memory) or computational intensive (i.e. a lot of computation operations evolving in a $CPUt  \approx >  0.1\frac{sec}{evaluation}$) the single processor might get over-loaded determining a degradation of performance. In such cases, the internal parallelism needs to be used (see the following);
- \item  \textbf{\texttt{True}}, the internal parallelism is employed using a internally-developed multi-processor approach (i.e. \xmlNode{batchSize} processors, 1 single thread). This approach works for both Shared Memory Systems (e.g. PC, laptops, workstations, etc.) and Distributed Memory Machines (e.g. High Performance Computing Systems, etc.). 
+ \item  \textbf{\texttt{True}}, the internal parallelism is employed using a internally-developed multi-processor approach (i.e. \xmlNode{batchSize} processors, 1 single thread). This approach works for both Shared Memory Systems (e.g. PC, laptops, workstations, etc.) and Distributed Memory Machines (e.g. High Performance Computing Systems, etc.).
  \\\nb This ``parallelism mode'' runs multiple instances of the Model in multiple processors. Since the parallelism is employed
- in Python, some overhead is present. This ``mode'' needs to be used when: 
+ in Python, some overhead is present. This ``mode'' needs to be used when:
  \begin{itemize}
   \item the Model evaluation is memory intensive (i.e. the multi-threading approach will cause the over-load of a single processor);
   \item the Model evaluation is computation intensive (i.e. $CPUt  \approx >  0.1\frac{sec}{evaluation}$).
@@ -193,6 +219,7 @@ field}, specifies, if a run of an external model has not failed, which output
 files should be deleted by their extension (e.g.,
 \xmlNode{deleteOutExtension}\texttt{txt,pdf}\xmlNode{/deleteOutExtension} will
 delete all generated txt and pdf files).
+\nb This flag is only active for Models of type ``Code''.
 %
 \default{None}
 
@@ -200,6 +227,7 @@ delete all generated txt and pdf files).
 \item \xmlNode{delSucLogFiles}, \xmlDesc{boolean, optional field}, when True and
 the run of an external model has not failed (return code = 0), deletes
 the associated log files.
+\nb This flag is only active for Models of type ``Code''.
 %
 \default{False}
 \end{itemize}
@@ -218,8 +246,8 @@ of protocol the parallel enviroment should use.
 %
 RAVEN currently supports one pre-defined ``mode'':
   \begin{itemize}
-    \item \textbf{mpi}: this ``mode'' uses \texttt{mpiexec} to distribute the
-      running program; more information regarding this protocol can be found
+    \item \textbf{mpi}: this ``mode'' uses \xmlNode{MPIExec}  command (default: \texttt{mpiexec}) 
+      to distribute the running program; more information regarding this protocol can be found
       in~\cite{MPI}.
       Mode ``MPI''  can either generate a \texttt{qsub} command or can execute
       on selected nodes.
@@ -263,7 +291,16 @@ RAVEN currently supports one pre-defined ``mode'':
                   to find the nodes' information in the enviroment variable
                   \texttt{PBS\_NODEFILE}.
            \end{itemize}
-           \item The mpi exec can be forced to run on one shared memory node with the \xmlNode{NoSplitNode}.  If this is present, the splitting apart of the batches will put each batch on one shared memory node.  Without \xmlNode{NoSplitNode}, they can be split across nodes.  There is an option \xmlAttr{maxOnNode} which puts at most \xmlAttr{maxOnNode} number of mpi processes on one node.  \xmlNode{NoSplitNode} can cause processes to not be placed, so \xmlNode{NoSplitNode} should not be used unless needed.  If limiting the number of mpi processes on one node is desired without forcing them to only run on one node, \xmlNode{LimitNode} can be used.  Both \xmlNode{NoSplitNode} and  \xmlNode{LimitNode} can have a \xmlAttr{noOverlap} which prevents multiple batches from running on a single node.
+         \item The cores needed can be specified manually with the
+           \xmlNode{coresneeded}.  This is directly used in the
+           \texttt{qsub} command select statement.
+         \item The max memory needed can be specified with the
+           \xmlNode{memory} XML node.  This will be used in the
+           \texttt{qsub} command select statement.
+         \item The placement can be specified with the \xmlNode{place}
+           XML node.  This will be used in the \texttt{qsub} place
+           statement.
+         \item There is a ``mpilegacy'' mode.  This probably will be removed in the future.  In this mode exec can be forced to run on one shared memory node with the \xmlNode{NoSplitNode}.  If this is present, the splitting apart of the batches will put each batch on one shared memory node.  Without \xmlNode{NoSplitNode}, they can be split across nodes.  There is an option \xmlAttr{maxOnNode} which puts at most \xmlAttr{maxOnNode} number of mpi processes on one node.  \xmlNode{NoSplitNode} can cause processes to not be placed, so \xmlNode{NoSplitNode} should not be used unless needed.  If limiting the number of mpi processes on one node is desired without forcing them to only run on one node, \xmlNode{LimitNode} can be used.  Both \xmlNode{NoSplitNode} and  \xmlNode{LimitNode} can have a \xmlAttr{noOverlap} which prevents multiple batches from running on a single node.
          \end{itemize}
          In addition, this flag activates the remote (PBS) execution of internal Models (e.g. ROMs,
          ExternalModels, PostProcessors, etc.). If this node is not present, the internal Models
@@ -475,23 +512,21 @@ overridden:
 \begin{lstlisting}[language=python]
 import Simulation
 class NewMode(Simulation.SimulationMode):
-  def doOverrideRun(self):
-    # If doOverrideRun is true, then use runOverride instead of
-    # running the simulation normally.
-    return True
+  def remoteRunCommand(self, runInfoDict):
+    # If it returns a dictionary, then run the command in args
+    # Example: {"args":["ssh","remotehost","raven_framework"]}
+    # Note that this command needs to be able to tell when it
+    # is running remotely, and then return None at that point
+    return None
 
-  def runOverride(self):
-    # this can completely override the Simulation's run method
-    # If implemented this method should call simulation.run somehow,
-    # possibly very indirectly
-    pass
-
-  def modifySimulation(self):
-    # modifySimulation is called after the runInfoDict has been
+  def modifyInfo(self, runInfoDict):
+    # modifyInfo is called after the runInfoDict has been
     # setup and allows the mode to change any parameters that
     # need changing. This typically modifies the precommand and
     # the postcommand that are put before/after the command.
-    pass
+    # In order to change them, return a dictionary with new values.
+    # Those new values will be used.
+    return {}
 
   def XMLread(self,XMLNode):
     # XMLread is called with the mode node, and can be used to
@@ -502,14 +537,15 @@ class NewMode(Simulation.SimulationMode):
 RAVEN's Job Handler module controls the creation and execution of
 individual code runs. Essentially, the SimulationMode class may be
 used when it is necessary to customize that behavior. First, it allows
-overriding how Simulation runs. This first method can be used if for
-example RAVEN needs to be run on a different machine such as a head
-node of a computer cluster. In such a case, a runOverride function can
-be created that causes RAVEN to be instantiated on the cluster head
-node (in cases where that is different than the computer where the
-user is currently working).  Secondly, (and usually easier when this
-is sufficient) the SimulationMode class allows modifying the various
-run info parameters before the code is run.
+providing a remote command for running RAVEN. This first method can be
+used if for example RAVEN needs to be run on a different machine such
+as a head node of a computer cluster. In such a case, a
+remoteRunCommand function can be created that causes RAVEN to be
+instantiated on the cluster head node (in cases where that is
+different than the computer where the user is currently working).
+Secondly, (and usually easier when this is sufficient) the
+SimulationMode class allows modifying the various run info parameters
+before the code is run.
 
 For modification of the run info parameters, generally the two most
 important are precommand and postcommand. They are placed in front and
@@ -518,9 +554,9 @@ back before running the code.  So for example if precommand is
 command is `runIt' then the full command would be: `mpiexec -n 3 runIt
 --number-threads=4' The precommand and postcommand are used for any
 run type that is `parallel', but not for `serial' codes.  They can be
-modified by overriding the \verb'modifySimulation' method and
-assigning to the \verb'runInfoDict' in the simulation passed in when
-the class is created.
+modified by overriding the \verb'modifyInfo' method and returning a
+new dictionary with new values.  The \verb'runInfoDict' in the
+simulation is passed in.
 
 To help with these commands, there are several variables that are
 substituted in before running the command.  These are:

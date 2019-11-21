@@ -48,7 +48,7 @@ def dump(node):
 
 def parse(inFile,dType=None):
   """
-    Given a file (GetPot or XML), process it into a node.
+    Given a file (XML), process it into a node.
     @ In, inFile, file, file to process, or string acceptable
     @ In, dType, string, optional, type of processing to use (xml or getpot)
     @ Out, tree, InputTree, structured input
@@ -60,23 +60,17 @@ def parse(inFile,dType=None):
     extension = inFile.name.split('.')[-1].lower()
     if extension == 'xml':
       dType = 'xml'
-    elif extension in ['i','inp','in']:
-      dType = 'getpot'
     else:
-      raise InputParsingError('Unrecognized file type for:',inFile,' | Expected .xml, .i, .in, or .inp')
+      #Possibly we should just try parsing the file instead of checking?
+      raise InputParsingError('Unrecognized file type for:',inFile,' | Expected .xml')
   if dType.lower()=='xml':
     #try:
-    xmltree = ET.parse(inFile,parser=XMLCommentParser()) #parser is defined below, under XMLCommentParser
+    parser = ET.XMLParser(target=CommentedTreeBuilder())
+    xmltree = ET.parse(inFile,parser=parser) #parser is defined below, under XMLCommentParser
     tree = xmlToInputTree(xmltree)
     #except Exception as e:
     #  print('ERROR: Input parsing error!')
     #  raise e
-  elif dType.lower()=='getpot':
-    try:
-      tree = getpotToInputTree(inFile)
-    except:
-      e = sys.exc_info()[0]
-      raise InputParsingError(e)
   else:
     raise InputParsingError('Unrecognized file type for:',inFile)
   return tree
@@ -146,79 +140,6 @@ def xmlToInputTree(xml):
     commentsToAdd = readChild(tsRoot,child,commentsToAdd)
   return InputTree(tsRoot)
 
-def getpotToInputTree(getpot):
-  """
-    Converts a getpot file into an InputTree object.
-    @ In, getpot, file, file object with getpot syntax
-    @ Out, tree, NodeTree, tree with sorted information
-  """
-  #root = Node()
-  parentNodes = []#root]
-  currentNode = None
-  global comment
-  comment = None
-  def addComment(node):
-    """
-      If comment is not None, adds it to node
-      @ In, node, Node, node
-      @ Out, None
-    """
-    global comment
-    if comment is not None:
-      node.addComment(comment)
-      comment = None
-  #end addComment
-  for line in getpot:
-    line = line.strip()
-    #if comment in line, store it for now
-    if '#' in line:
-      if comment is not None:
-        raise NotImplementedError('need to handle comments better!')
-        #need to stash comments, attributes for node
-      comment = '#'.join(line.split('#')[1:])
-      line = line.split('#')[0].strip()
-    #if starting new node
-    if line.startswith('[./') and line.endswith(']'):
-      #if child node, stash the parent for now
-      if currentNode is not None:
-        parentNodes.append(currentNode)
-      currentNode = InputNode(tag=line[3:-1])#,attrib={})
-      addComment(currentNode)
-    #if at end of node
-    elif line == '[../]':
-      #FIXME what if parentNodes is empty, i.e., back to the beginning?  Simulation node wrapper?
-      #add currently-building node to its parent
-      if len(parentNodes)>0:
-        parentNodes[-1].append(currentNode)
-        #make parent the active node
-        currentNode = parentNodes.pop()
-      else:
-        #this is the root
-        root = currentNode
-      addComment(currentNode) #FIXME should belong to next child? Hard to say.
-    #empty line
-    elif line == '':
-      currentNode.addComment(comment)
-    #attribute setting line
-    elif '=' in line:
-      #TODO FIXME add attribute comment!
-      attribute,value = list(i.strip() for i in line.split('='))
-      value = value.strip("'")
-      if attribute in currentNode.attrib.keys():
-        raise IOError('Multiple attributes defined with same name! "'+attribute+'" = "'+value+'"')
-      #special keywords: "name" and "value"
-      elif attribute == 'value':
-        currentNode.text = value
-        #TODO default lists: spaces, commas, or ??? (might just work anyway?)
-        # -> getpot uses spaces surrounded by apostrophes, '1 2 3'
-        # -> raven sometimes does spaces <a>1 2 3</> and sometimes commas <a>1,2,3</a>
-      else:
-        currentNode.attrib[attribute] = value
-    else:
-      addComment(currentNode)
-      raise IOError('Unrecognized line syntax:',line)
-  return InputTree(root)
-
 def inputTreeToXml(ts,fromNode=False):
   """
     Converts InputTree into XML
@@ -256,97 +177,35 @@ def inputTreeToXml(ts,fromNode=False):
   else:
     return ET.ElementTree(element=xRoot)
 
-def inputTreeToGetpot(ts,fromNode=False):
-  """
-    Converts InputTree into XML
-    @ In, ts, InputTree, tree to convert
-    @ In, fromNode, bool, if True means input is a node instead of a tree
-    @ Out, gTree, string, getpot-formatted string
-  """
-  if fromNode:
-    tRoot = ts
-  else:
-    tRoot = ts.getroot()
-  def addChild(gNode,tNode,depth=0):
-    """
-      Adds tnode to gnode, translating
-      @ In, gNode, string, getpot-style string format
-      @ In, tNode, Node, tree structure node
-      @ Out, None
-    """
-    #start the block
-    if depth == 0:
-      newlines = ''
-    elif depth == 1:
-      newlines = '\n\n'
-    else:
-      newlines = '\n'
-    gNode += newlines + '  '*depth + '[./' + tNode.tag + ']'
-    #add a comment if it's not about an attribute
-    for comment in tNode.comments:
-      if comment.split(':')[0] not in tNode.attrib.keys():
-        gNode += ' #'+comment
-    #write out the attributes - sort them for consistency
-    sortedAttr = sorted(tNode.attrib.keys())
-    for attr in sortedAttr:
-      val = tNode.attrib[attr]
-      gNode += '\n'+'  '*(depth+1) + attr + ' = '
-      if ' ' in val:
-        gNode += "'" + val + "'"
-      else:
-        gNode += val
-      for comment in tNode.comments:
-        if comment.split(':')[0] == attr:
-          gNode += '#'+comment
-    #write out the value
-    if tNode.text is not None and len(tNode.text) > 0:
-      attr = 'value'
-      val = tNode.text
-      gNode += '\n'+'  '*(depth+1) + attr + ' = '
-      if ' ' in val:
-        gNode += "'" + val + "'"
-      else:
-        gNode += val
-    #add child blocks
-    for child in tNode:
-      gNode = addChild(gNode,child,depth+1)
-    #close the block
-    gNode += '\n'+'  '*depth+'[../]'
-    return gNode
-  #end addChild method
-  gRoot = addChild('',tRoot)
-  gRoot += '\n'
-  return gRoot
-
 ###########
 # PARSERS #
 ###########
-class XMLCommentParser(ET.XMLTreeBuilder):
+## Extracted from: https://stackoverflow.com/questions/33573807/faithfully-preserve-comments-in-parsed-xml-python-2-7
+## As mentioned on this post, we could also potentially use lxml to handle this
+## automatically without the need for a special class
+class CommentedTreeBuilder(ET.TreeBuilder):
   """
-    An XML parser that expands on the default to preserves comments
+      A class for preserving comments faithfully when parsing XML
   """
-  def __init__(self):
+  def __init__(self, *args, **kwargs):
     """
-      Constructor.
-      @ In, None
-      @ Out, None
+        The constructor that passes arguments to the
+        xml.etree.ElementTree.TreeBuilder class.
+        See the relevant documentation for the arguments accepted by the
+        base class's __init__ function.
     """
-    ET.XMLTreeBuilder.__init__(self)
-    self._parser.CommentHandler = self.handleComment
+    super(CommentedTreeBuilder, self).__init__(*args, **kwargs)
 
-  def handleComment(self,data):
+  def comment(self, data):
     """
-      Constructor.
-      @ In, data, string object to parse into comment
-      @ Out, None
+        A function for appropriately surrounding data with the necessary
+        markers to establish it as a comment.
+        @ In, data, string, the text that needs to be wrapped in a comment.
+        @ Out, None
     """
-    self._target.start(ET.Comment,{})
-    self._target.data(data)
-    self._target.end(ET.Comment)
-
-#set up a parser for this module
-parser = XMLCommentParser()
-
+    self.start(ET.Comment, {})
+    self.data(data)
+    self.end(ET.Comment)
 
 #########
 # NODES #
@@ -405,7 +264,7 @@ class InputNode:
       @ In, None
       @ Out, hash, tuple, name and values and text
     """
-    return hash(tuple(self.tag,tuple(sorted(self.attrib.items())),self.texxt))
+    return hash(tuple((self.tag,tuple(sorted(self.attrib.items())),self.text)))
 
   def __iter__(self):
     """
@@ -425,6 +284,24 @@ class InputNode:
       @ Out, __len__, int, number of children
     """
     return len(self.children)
+
+  def __getitem__(self, index):
+    """
+      Returns a specific child node.
+      @ In, index, int, the index for the child
+      @ Out, __getitem__, InputNode, the child
+    """
+    return self.children[index]
+
+  def __setitem__(self,index,value):
+    """
+      Sets a specific child node.
+      @ In, index, int, the index for the child
+      @ In, value, Node, the child itself
+      @ Out, None
+    """
+    value = self.assureIsNode(value)
+    self.children[index] = value
 
   def __repr__(self):
     """
@@ -459,7 +336,7 @@ class InputNode:
       @ In, node, Node, node to append to children
       @ Out, None
     """
-    assert isinstance(node,InputNode)
+    node = self.assureIsNode(node)
     self.children.append(node)
 
   def find(self,nodeName):
@@ -515,6 +392,21 @@ class InputNode:
       for e in e.iter(name):
         yield e
 
+  def assureIsNode(self,node):
+    """
+      Takes care of translating XML to Node on demand.
+      @ In, node, Node or ET.Element, node to fix up
+      @ Out, node, fixed node
+    """
+    if not isinstance(node,InputNode):
+      # if XML, convert to InputNode
+      if isinstance(node,ET.Element):
+        tree = ET.ElementTree(node)
+        node = xmlToInputTree(tree).getroot()
+      else:
+        raise TypeError('TREE-STRUCTURE ERROR: When trying to use node "{}", unrecognized type "{}"!'.format(node,type(node)))
+    return node
+
   def printXML(self):
     """
       Returns string representation of tree (in XML format).
@@ -524,14 +416,6 @@ class InputNode:
     xml = inputTreeToXml(self,fromNode=True)
     return xmlUtils.prettify(xml)
 
-  def printGetPot(self):
-    """
-      Returns tree in getpot string.
-      @ In, None
-      @ Out, printGetPot, string, formatted input in getpot style
-    """
-    return inputTreeToGetpot(self,fromNode=True)
-
   def remove(self,node):
     """
       Removes a child from the tree.
@@ -539,6 +423,14 @@ class InputNode:
       @ Out, None
     """
     self.children.remove(node)
+
+  def items(self):
+    """
+      Gets all the children in the tree.
+      @ In, None
+      @ Out, children, list, list of all the children.
+    """
+    return self.children
 
 class HierarchicalNode(MessageHandler.MessageUser):
   """
@@ -644,7 +536,8 @@ class HierarchicalNode(MessageHandler.MessageUser):
     """
     isHere = False
     for branchv in self._branches:
-      if branchName.strip() == branchv.name: isHere = True
+      if branchName.strip() == branchv.name:
+        isHere = True
     return isHere
 
   def numberBranches(self):
@@ -665,8 +558,10 @@ class HierarchicalNode(MessageHandler.MessageUser):
     node.parentname = self.name
     node.parent     = self
     # this is to avoid max number of recursion if a close loop. TODO: BETTER WAY
-    if not updateDepthLocal: node.updateDepth()
-    else                   : node.depth      = self.depth + 1
+    if not updateDepthLocal:
+      node.updateDepth()
+    else:
+      node.depth      = self.depth + 1
     self._branches.append(node)
 
   def updateDepth(self):
@@ -675,8 +570,10 @@ class HierarchicalNode(MessageHandler.MessageUser):
       @In, None
       @ Out, None
     """
-    if self.parent=='root': self.depth=0
-    else: self.depth = self.parent.depth+1
+    if self.parent=='root':
+      self.depth=0
+    else:
+      self.depth = self.parent.depth+1
     for node in self._branches:
       node.updateDepth()
 
@@ -840,7 +737,8 @@ class HierarchicalNode(MessageHandler.MessageUser):
     while parent:
       result.insert (0, ego)
       parent, ego  =  parent.parent, parent
-    if ego.parentname == 'root': result.insert (0, ego)
+    if ego.parentname == 'root':
+      result.insert (0, ego)
     return result
 
   def setText(self,entry):
@@ -858,11 +756,16 @@ class HierarchicalNode(MessageHandler.MessageUser):
       @ Out, None
     """
     dumpFileObj.write(' '+'  '*self.depth + '<branch name="' + self.name + '" parent_name="' + self.parentname + '"'+ ' n_branches="'+str(self.numberBranches())+'" >\n')
-    if len(self.values.keys()) >0: dumpFileObj.write(' '+'  '*self.depth +'  <attributes>\n')
-    for key,value in self.values.items(): dumpFileObj.write(' '+'  '*self.depth+'    <'+ key +'>' + str(value) + '</'+key+'>\n')
-    if len(self.values.keys()) >0: dumpFileObj.write(' '+'  '*self.depth +'  </attributes>\n')
-    for e in self._branches: e.writeNode(dumpFileObj)
-    if self.numberBranches()>0: dumpFileObj.write(' '+'  '*self.depth + '</branch>\n')
+    if len(self.values.keys()) >0:
+      dumpFileObj.write(' '+'  '*self.depth +'  <attributes>\n')
+    for key,value in self.values.items():
+      dumpFileObj.write(' '+'  '*self.depth+'    <'+ key +'>' + str(value) + '</'+key+'>\n')
+    if len(self.values.keys()) >0:
+      dumpFileObj.write(' '+'  '*self.depth +'  </attributes>\n')
+    for e in self._branches:
+      e.writeNode(dumpFileObj)
+    #if self.numberBranches()>0: # it's unclear why this conditional was here.  It results in the "branch" tag not closing itself. - talbpaul, 2017-10
+    dumpFileObj.write(' '+'  '*self.depth + '</branch>\n')
 
   def stringNode(self,msg=''):
     """
@@ -871,13 +774,19 @@ class HierarchicalNode(MessageHandler.MessageUser):
       @ Out, msg, string, the modified string
     """
     msg+=''+'  '*self.depth + '<' + self.name + '>'+str(self.text)
-    if self.numberBranches()==0:msg+='</'+self.name+'>'
+    if self.numberBranches()==0:
+      msg+='</'+self.name+'>'
     msg+='\n'
-    if len(self.values.keys()) >0: msg+=''+'  '*self.depth +'  <attributes>\n'
-    for key,value in self.values.items(): msg+=' '+'  '*self.depth+'    <'+ key +'>' + str(value) + '</'+key+'>\n'
-    if len(self.values.keys()) >0: msg+=''+'  '*self.depth +'  </attributes>\n'
-    for e in self._branches: msg=e.stringNode(msg)
-    if self.numberBranches()>0: msg+=''+'  '*self.depth + '</'+self.name+'>\n'
+    if len(self.values.keys()) >0:
+      msg+=''+'  '*self.depth +'  <attributes>\n'
+    for key,value in self.values.items():
+      msg+=' '+'  '*self.depth+'    <'+ key +'>' + str(value) + '</'+key+'>\n'
+    if len(self.values.keys()) >0:
+      msg+=''+'  '*self.depth +'  </attributes>\n'
+    for e in self._branches:
+      msg=e.stringNode(msg)
+    if self.numberBranches()>0:
+      msg+=''+'  '*self.depth + '</'+self.name+'>\n'
     return msg
 
 ##################
@@ -913,14 +822,6 @@ class InputTree:
     """
     return self.rootNode
 
-  def printGetPot(self):
-    """
-      Returns tree in getpot string.
-      @ In, None
-      @ Out, printGetPot, string, formatted input in getpot style
-    """
-    return self.rootNode.printGetPot()
-
   def printXML(self):
     """
       Returns string of full XML tree by returning string of root node.
@@ -950,7 +851,8 @@ class HierarchicalTree(MessageHandler.MessageUser):
       raise(IOError,'Tried to initialize NodeTree without a message handler!  Was given: '+str(messageHandler))
     self.messageHandler = messageHandler
     self._rootnode = node
-    if node: node.parentname='root'
+    if node:
+      node.parentname='root'
 
   def getrootnode(self):
     """
@@ -975,9 +877,12 @@ class HierarchicalTree(MessageHandler.MessageUser):
       @ In, newName, string, the new name
       @ Out, None
     """
-    if path == "root": node = self.getrootnode()
-    else             : node = self.find(path)
-    if node != None: node.name = newName
+    if path == "root":
+      node = self.getrootnode()
+    else:
+      node = self.find(path)
+    if node != None:
+      node.name = newName
 
   def iter(self, name=None):
     """
@@ -985,8 +890,10 @@ class HierarchicalTree(MessageHandler.MessageUser):
       @ In, name, string, the path or the node name
       @ Out, iter, iterator, the iterator
     """
-    if name == 'root': return self.__rootnode
-    else:              return self._rootnode.iter(name)
+    if name == 'root':
+      return self.__rootnode
+    else:
+      return self._rootnode.iter(name)
 
   def iterEnding(self):
     """
@@ -1018,7 +925,8 @@ class HierarchicalTree(MessageHandler.MessageUser):
       @ In, path, string, the path or name
       @ Out, find, Node, first matching node or None if no node was found
     """
-    if self._rootnode.name == path: return self.getrootnode()
+    if self._rootnode.name == path:
+      return self.getrootnode()
     if path[:1] == "/":
       path = "." + path
     return self._rootnode.findBranch(path)
@@ -1029,7 +937,8 @@ class HierarchicalTree(MessageHandler.MessageUser):
       @ In, path, string, the path or name
       @ Out, findall, list of Node iterators, A list or iterator containing all matching nodes
     """
-    if self._rootnode.name == path: return [self.getrootnode()]
+    if self._rootnode.name == path:
+      return [self.getrootnode()]
     if path[:1] == "/":
       path = "." + path
     return self._rootnode.findallBranch(path)
@@ -1050,12 +959,15 @@ class HierarchicalTree(MessageHandler.MessageUser):
       @ In, dumpFile, file instance or string, filename (string) or file instance(opened file)
       @ Out, None
     """
-    if type(dumpFile).__name__ == 'FileObject' : myFile = open(dumpFile,'w')
-    else                                       : myFile = dumpFile
+    if type(dumpFile).__name__ == 'FileObject':
+      myFile = open(dumpFile,'w')
+    else:
+      myFile = dumpFile
     myFile.write('<NodeTree name = "'+self._rootnode.name+'">\n')
     self._rootnode.writeNode(myFile)
     myFile.write('</NodeTree>\n')
-    if type(dumpFile).__name__ == 'FileObject' : myFile.close()
+    if type(dumpFile).__name__ == 'FileObject':
+      myFile.close()
 
   def stringNodeTree(self,msg=''):
     """

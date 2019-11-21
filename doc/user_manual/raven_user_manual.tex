@@ -21,9 +21,11 @@
 % If you just want to change the text font, you should just \usepackage{times}.
 % \usepackage{pslatex}
 \usepackage{times}
+\usepackage{longtable}
 \usepackage[FIGBOTCAP,normal,bf,tight]{subfigure}
 \usepackage{amsmath}
 \usepackage{amssymb}
+\usepackage[labelfont=bf]{caption}
 \usepackage{pifont}
 \usepackage{enumerate}
 \usepackage{listings}
@@ -162,7 +164,6 @@ showstringspaces=false            %
 \newcommand{\default}[1]{~\\*\textit{Default: #1}}
 \newcommand{\nb} {\textcolor{deepgreen}{\textbf{~Note:}}~}
 
-
 %%%%%%%% End comands definition to input python code into document
 
 %\usepackage[dvips,light,first,bottomafter]{draftcopy}
@@ -205,6 +206,8 @@ showstringspaces=false            %
     urlcolor=black
 }
 
+\newcommand{\wiki}{\href{https://github.com/idaholab/raven/wiki}{RAVEN wiki}}
+
 % Compress lists of citations like [33,34,35,36,37] to [33-37]
 \usepackage{cite}
 
@@ -244,21 +247,28 @@ showstringspaces=false            %
 
 
 \author{
-\textbf{\textit{Principal Investigator (PI):}}
+\textbf{\textit{Project Manager:}}
  \\Cristian Rabiti\\
+ \textbf{\textit{Principal Investigator and Technical Leader:}}
+ \\Andrea Alfonsi\\
 \textbf{\textit{Main Developers:}}
 \\Andrea Alfonsi
-\\Joshua Cogliati
 \\Diego Mandelli
+\\Joshua Cogliati
 \\Congjian Wang
-\\Sonat Sen
-\\Robert Kinoshita
-\\Jun Chen\\
-\textbf{\textit{Contributors:}} \\Alessandro Bandini
-\\Daniel P. Maljovec
-\\Ivan Rinaldi
 \\Paul W. Talbot
-\\Claudia Picoco
+\\Daniel P. Maljovec
+\\Robert Kinoshita\\
+\textbf{\textit{Former Developers:}} \\Sonat Sen
+\\Jun Chen\\
+\textbf{\textit{Contributors:}}
+\\Alessandro Bandini (Post-Processor)
+\\Ivan Rinaldi (documentation)
+\\Claudia Picoco (new external code interface)
+\\James B. Tompkins (new external code interface)
+\\Matteo Donorio (new external code interface)
+\\Fabio Giannetti (new external code interface)
+\\Jia Zhou (conjugate gradient optimizer)
 }
 % \\James B. Tompkins}   Just people who actually ``developed'' a significant capability in the code should be placed here. Andrea
 %\author{\textbf{\textit{Main Developers:}}  \\Andrea Alfonsi}
@@ -285,11 +295,10 @@ showstringspaces=false            %
 % Set some things we need for SAND reports. These are mandatory
 %
 \SANDnum{INL/EXT-15-34123}
-\SANDprintDate{March 2017}
+\SANDprintDate{\today}
 \SANDauthor{Cristian Rabiti, Andrea Alfonsi, Joshua Cogliati, Diego Mandelli,
-Robert Kinoshita, Sonat Sen, Congjian Wang, Jun Chen}
-\SANDreleaseType{Revision 5}
-
+Robert Kinoshita, Sonat Sen, Congjian Wang, Paul W. Talbot, Daniel P. Maljovec}
+\SANDreleaseType{Revision 7}
 
 % ---------------------------------------------------------------------------- %
 % Include the markings required for your SAND report. The default is "Unlimited
@@ -404,7 +413,7 @@ Robert Kinoshita, Sonat Sen, Congjian Wang, Jun Chen}
 
 \input{introduction.tex}
 \input{nomenclature.tex}
-\input{install.tex}
+\input{Installation/main.tex}
 \input{HowToRun.tex}
 \input{ravenStructure.tex}
 \input{runInfo.tex}
@@ -421,6 +430,8 @@ Robert Kinoshita, Sonat Sen, Congjian Wang, Jun Chen}
 \input{step.tex}
 \input{existing_interfaces.tex}
 \input{couplingAcode.tex}
+\input{advanced_users_plugins.tex}
+\input{advanced_users_templates.tex}
 \input{examplesPrimer.tex}
 \section*{Document Version Information}
 \input{../version.tex}

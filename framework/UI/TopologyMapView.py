@@ -30,9 +30,16 @@ import warnings
 warnings.simplefilter('default',DeprecationWarning)
 #End compatibility block for Python 3
 
-import PySide.QtCore as qtc
-import PySide.QtGui as qtg
-import PySide.QtSvg as qts
+try:
+  from PySide import QtCore as qtc
+  from PySide import QtGui as qtg
+  from PySide import QtGui as qtw
+  from PySide import QtSvg as qts
+except ImportError as e:
+  from PySide2 import QtCore as qtc
+  from PySide2 import QtGui as qtg
+  from PySide2 import QtWidgets as qtw
+  from PySide2 import QtSvg as qts
 
 from .BaseTopologicalView import BaseTopologicalView
 
@@ -41,7 +48,7 @@ import math
 import time
 from . import colors
 
-class CustomGraphicsView(qtg.QGraphicsView):
+class CustomGraphicsView(qtw.QGraphicsView):
   """
      A subclass of QGraphicsView where we custom the handling of mouse
      events and drawing of selected items.
@@ -75,7 +82,7 @@ class CustomGraphicsView(qtg.QGraphicsView):
     else:
       self.parent().mouseReleaseEvent(event,True)
 
-class CustomPathItem(qtg.QGraphicsPathItem):
+class CustomPathItem(qtw.QGraphicsPathItem):
   """
      A subclass of QGraphicsPathItem where we custom the drawing.
   """
@@ -89,8 +96,11 @@ class CustomPathItem(qtg.QGraphicsPathItem):
         @ In, data, a dictionary of data for this graphical item to display
           in its tooltip.
     """
-    super(CustomPathItem, self).__init__(path,parent,scene)
+    #super(CustomPathItem, self).__init__(path,parent,scene)
+    super(CustomPathItem, self).__init__(path,parent)
     self.graphics = []
+    if scene is not None:
+      scene.addItem(self)
     self.tipSize = qtc.QSize(0,0)
 
     font = qtg.QFont('Courier New',2)
@@ -198,7 +208,7 @@ class CustomPathItem(qtg.QGraphicsPathItem):
           y = boxY+boxH - h
           cDimHist.addRect(x,y,w,h)
         gDimHist = self.scene().addPath(cDimHist)
-        gDimHist.setPen(qtc.Qt.NoPen)#qtg.QPen(qtg.QColor('#CCCCCC')))
+        gDimHist.setPen(qtg.QPen(qtc.Qt.NoPen)) #qtg.QPen(qtg.QColor('#CCCCCC')))
         gDimHist.setBrush(qtg.QBrush(qtg.QColor('#333333')))
         gDimHist.setVisible(False)
         self.graphics.append((cDimHist,gDimHist))
@@ -218,7 +228,7 @@ class CustomPathItem(qtg.QGraphicsPathItem):
           h = .2
           cDimScatter.addRect(x,y,w,h)
         gDimScatter = self.scene().addPath(cDimScatter)
-        gDimScatter.setPen(qtc.Qt.NoPen)#qtg.QPen(qtg.QColor('#CCCCCC')))
+        gDimScatter.setPen(qtg.QPen(qtc.Qt.NoPen)) #qtg.QPen(qtg.QColor('#CCCCCC')))
         gDimScatter.setBrush(qtg.QBrush(qtg.QColor('#333333')))
         gDimScatter.setVisible(False)
         self.graphics.append((cDimScatter,gDimScatter))
@@ -243,8 +253,8 @@ class CustomPathItem(qtg.QGraphicsPathItem):
       @ Out, None
     """
     if self.isSelected():
-      selectedOption = qtg.QStyleOptionGraphicsItem(option)
-      selectedOption.state &=  (not qtg.QStyle.State_Selected)
+      selectedOption = qtw.QStyleOptionGraphicsItem(option)
+      selectedOption.state &=  (not qtw.QStyle.State_Selected)
       originalPen = self.pen()
       selectedPen = qtg.QPen(originalPen)
       selectedPen.setDashPattern([2,1])
@@ -333,7 +343,7 @@ class CustomPathItem(qtg.QGraphicsPathItem):
     super(CustomPathItem,self).setPen(pen)
     bgColor = pen.color()
     bgColor.setAlpha(50)
-    for i in xrange(4,len(self.graphics),4):
+    for i in range(4,len(self.graphics),4):
       self.graphics[i][1].setBrush(qtg.QBrush(pen.color().lighter()))
       self.graphics[i+1][1].setBrush(qtg.QBrush(pen.color().darker()))
 
@@ -347,8 +357,8 @@ class CustomPathItem(qtg.QGraphicsPathItem):
         @ Out, object specifying the new state (default is to return value).
 
     """
-    if change == qtg.QGraphicsItem.ItemSceneHasChanged:
-      for graphic,path in zip(self.graphics,self.paths):
+    if change == qtw.QGraphicsItem.ItemSceneHasChanged:
+      for graphic in self.graphics:
         if graphic not in self.scene().items():
           self.scene().addItem(graphic)
     return super(CustomPathItem,self).itemChange(change,value)
@@ -390,11 +400,12 @@ class TopologyMapView(BaseTopologicalView):
     """
     # Try to apply a new layout, if one already exists then make sure to grab
     # it for updating
-    self.setLayout(qtg.QGridLayout())
+    if self.layout() is None:
+      self.setLayout(qtw.QGridLayout())
     layout = self.layout()
     self.clearLayout(layout)
 
-    self.scene = qtg.QGraphicsScene()
+    self.scene = qtw.QGraphicsScene()
     self.scene.setSceneRect(0,0,100,100)
     self.gView = CustomGraphicsView(self.scene)
     self.gView.setParent(self)
@@ -402,13 +413,13 @@ class TopologyMapView(BaseTopologicalView):
                               qtg.QPainter.SmoothPixmapTransform)
     self.gView.setHorizontalScrollBarPolicy(qtc.Qt.ScrollBarAlwaysOff)
     self.gView.setVerticalScrollBarPolicy(qtc.Qt.ScrollBarAlwaysOff)
-    self.gView.setDragMode(qtg.QGraphicsView.RubberBandDrag)
+    self.gView.setDragMode(qtw.QGraphicsView.RubberBandDrag)
     self.scene.selectionChanged.connect(self.select)
 
     mergeSequence = self.amsc.GetMergeSequence()
-    pCount = len(set([p for idx,(parent,p) in mergeSequence.iteritems()]))-1
+    pCount = len(set([p for idx,(parent,p) in mergeSequence.items()]))-1
 
-    self.rightClickMenu = qtg.QMenu()
+    self.rightClickMenu = qtw.QMenu()
     persAction = self.rightClickMenu.addAction('Set Persistence Here')
     persAction.triggered.connect(self.setPersistence)
     incAction = self.rightClickMenu.addAction('Increase Persistence')
@@ -426,7 +437,7 @@ class TopologyMapView(BaseTopologicalView):
     glyphActions.append(self.glyphMenu.addAction('Triangle'))
     glyphActions.append(self.glyphMenu.addAction('Circle'))
 
-    self.glyphGroup = qtg.QActionGroup(self.glyphMenu)
+    self.glyphGroup = qtw.QActionGroup(self.glyphMenu)
     for act in glyphActions:
       act.setCheckable(True)
       self.glyphGroup.addAction(act)
@@ -445,40 +456,52 @@ class TopologyMapView(BaseTopologicalView):
     self.gView.scale(self.gView.width()/self.scene.width(),
                      self.gView.height()/self.scene.height())
 
-    persistences = [p for idx,(parent,p) in mergeSequence.iteritems()]
+    persistences = [p for idx,(parent,p) in mergeSequence.items()]
     persistences = sorted(set(persistences))
     self.amsc.Persistence(persistences[-1])
 
     self.updateScene()
 
-  def saveImage(self):
-    """ Saves the current display of this view to a static image by loading a
-        file dialog box.
+  def saveImage(self, filename=None):
     """
-    dialog = qtg.QFileDialog(self)
-    dialog.setFileMode(qtg.QFileDialog.AnyFile)
-    dialog.setAcceptMode(qtg.QFileDialog.AcceptSave)
-    dialog.exec_()
-    if dialog.result() == qtg.QFileDialog.Accepted:
-      myFile = dialog.selectedFiles()[0]
-      self.scene.clearSelection()
-      self.scene.setSceneRect(self.scene.itemsBoundingRect())
-      if myFile.endswith('.svg'):
-        svgGen = qts.QSvgGenerator()
-        svgGen.setFileName(myFile)
-        svgGen.setSize(self.scene.sceneRect().size().toSize())
-        svgGen.setViewBox(self.scene.sceneRect())
-        svgGen.setTitle("Screen capture of " + self.__class__.__name__)
-        svgGen.setDescription("Generated from RAVEN.")
-        painter = qtg.QPainter (svgGen)
+        Saves the current display of this view to a static image by loading a
+        file dialog box.
+        @ In, filename, string, optional parameter specifying where this image
+        will be saved. If None, then a dialog box will prompt the user for a
+        name and location.
+        @ Out, None
+    """
+    if filename is None:
+      dialog = qtw.QFileDialog(self)
+      dialog.setFileMode(qtw.QFileDialog.AnyFile)
+      dialog.setAcceptMode(qtw.QFileDialog.AcceptSave)
+      dialog.exec_()
+      if dialog.result() == qtw.QFileDialog.Accepted:
+        filename = dialog.selectedFiles()[0]
       else:
-        image = qtg.QImage(self.scene.sceneRect().size().toSize(), qtg.QImage.Format_ARGB32)
-        image.fill(qtc.Qt.transparent)
-        painter = qtg.QPainter(image)
-      self.scene.render(painter)
-      if not myFile.endswith('.svg'):
-        image.save(myFile,quality=100)
-      del painter
+        return
+
+    self.scene.clearSelection()
+    self.scene.setSceneRect(self.scene.itemsBoundingRect())
+    if filename.endswith('.svg'):
+      svgGen = qts.QSvgGenerator()
+      svgGen.setFileName(filename)
+      svgGen.setSize(self.scene.sceneRect().size().toSize())
+      svgGen.setViewBox(self.scene.sceneRect())
+      svgGen.setTitle("Screen capture of " + self.__class__.__name__)
+      svgGen.setDescription("Generated from RAVEN.")
+      painter = qtg.QPainter (svgGen)
+    else:
+      image = qtg.QImage(self.scene.sceneRect().size().toSize(), qtg.QImage.Format_ARGB32)
+      image.fill(qtc.Qt.transparent)
+      painter = qtg.QPainter(image)
+
+    self.scene.render(painter)
+
+    if not filename.endswith('.svg'):
+      image.save(filename, quality=100)
+
+    del painter
 
   def resizeEvent(self,event):
     """ An event handler triggered when the user resizes this view.
@@ -497,7 +520,7 @@ class TopologyMapView(BaseTopologicalView):
     mergeSequence = self.amsc.GetMergeSequence()
     position = self.gView.mapFromGlobal(self.rightClickMenu.pos())
     mousePt = self.gView.mapToScene(position.x(),position.y()).x()
-    persistences = [p for idx,(parent,p) in mergeSequence.iteritems()]
+    persistences = [p for idx,(parent,p) in mergeSequence.items()]
     persistences = sorted(set(persistences))
     minP = 0
     maxP = max(persistences)
@@ -558,7 +581,7 @@ class TopologyMapView(BaseTopologicalView):
         the current setting.
     """
     mergeSequence = self.amsc.GetMergeSequence()
-    persistences = [p for idx,(parent,p) in mergeSequence.iteritems()]
+    persistences = [p for idx,(parent,p) in mergeSequence.items()]
     eps = max(persistences)*1e-6
     persistences = sorted(set(persistences))
     persistences.insert(0,0.)
@@ -575,7 +598,7 @@ class TopologyMapView(BaseTopologicalView):
         the current setting.
     """
     mergeSequence = self.amsc.GetMergeSequence()
-    persistences = [p for idx,(parent,p) in mergeSequence.iteritems()]
+    persistences = [p for idx,(parent,p) in mergeSequence.items()]
     eps = max(persistences)*1e-6
     persistences = sorted(set(persistences))
     persistences.insert(0,0.)
@@ -592,7 +615,7 @@ class TopologyMapView(BaseTopologicalView):
         structure.
     """
     selectedKeys = []
-    for key,graphic in self.polygonMap.iteritems():
+    for key,graphic in self.polygonMap.items():
       if graphic in self.scene.selectedItems():
         selectedKeys.append(key)
     self.amsc.SetSelection(selectedKeys)
@@ -628,9 +651,9 @@ class TopologyMapView(BaseTopologicalView):
     if fromChild:
       if event.buttons() == qtc.Qt.MiddleButton:
         colorMap = self.amsc.GetColors()
-        for extPair,graphic in self.polygonMap.iteritems():
+        for extPair,graphic in self.polygonMap.items():
           if graphic in self.scene.selectedItems():
-            if isinstance(graphic,qtg.QGraphicsPathItem):
+            if isinstance(graphic,qtw.QGraphicsPathItem):
               minLabel = extPair[0]
               maxLabel = extPair[1]
 
@@ -672,7 +695,7 @@ class TopologyMapView(BaseTopologicalView):
     """
     persistence = self.amsc.Persistence()
     mergeSequence = self.amsc.GetMergeSequence()
-    persistences = [p for idx,(parent,p) in mergeSequence.iteritems()]
+    persistences = [p for idx,(parent,p) in mergeSequence.items()]
     persistences = sorted(set(persistences))
     persistences.insert(0,0.)
     persistences.pop()
@@ -763,7 +786,7 @@ class TopologyMapView(BaseTopologicalView):
     ## The minimum distances we will allow things to overlap
     epsX = effectiveWidth*1e-2
     epsY = effectiveHeight*1e-2
-    for extPair,items in partitions.iteritems():
+    for extPair,items in partitions.items():
       minLabel = extPair[0]
       maxLabel = extPair[1]
 
@@ -775,13 +798,13 @@ class TopologyMapView(BaseTopologicalView):
           self.extLocations[extIdx] = (xMin,yMin)
     ############################################################################
 
-    for extPair,items in partitions.iteritems():
+    for extPair,items in partitions.items():
       minLabel = extPair[0]
       maxLabel = extPair[1]
       ys = self.amsc.Y[np.array(items)]
       lineWidth = (self.maxDiameter+self.minDiameter)/2.
 
-      pen = qtc.Qt.NoPen#qtg.QPen(qtc.Qt.black)
+      pen = qtg.QPen(qtc.Qt.NoPen) #qtg.QPen(qtc.Qt.black)
 
       fillColor = qtg.QColor(colorMap[extPair])
       fillColor.setAlpha(200)
@@ -801,11 +824,11 @@ class TopologyMapView(BaseTopologicalView):
       self.polygonMap[(minLabel,maxLabel)] = CustomPathItem(path,None,self.scene,partitionData)
       pen = qtg.QPen(brush,self.minDiameter)
       self.polygonMap[(minLabel,maxLabel)].setPen(pen)
-      self.polygonMap[(minLabel,maxLabel)].setFlag(qtg.QGraphicsItem.ItemIsSelectable)
+      self.polygonMap[(minLabel,maxLabel)].setFlag(qtw.QGraphicsItem.ItemIsSelectable)
       self.polygonMap[(minLabel,maxLabel)].setAcceptHoverEvents(True)
-      self.polygonMap[(minLabel,maxLabel)].setFlag(qtg.QGraphicsItem.ItemClipsToShape)
+      self.polygonMap[(minLabel,maxLabel)].setFlag(qtw.QGraphicsItem.ItemClipsToShape)
 
-    for key,(parentIdx,persistence) in mergeSequence.iteritems():
+    for key,(parentIdx,persistence) in mergeSequence.items():
       if key in self.extLocations:
         x = self.extLocations[key][0]
         y = self.extLocations[key][1]
@@ -847,7 +870,7 @@ class TopologyMapView(BaseTopologicalView):
 
       count = 0
       startT = time.clock()
-      for extPair,items in partitions.iteritems():
+      for extPair,items in partitions.items():
         if key in extPair:
           count += len(items)
       # print('counting finished: (%f s)' % (time.clock()-startT))
@@ -864,7 +887,7 @@ class TopologyMapView(BaseTopologicalView):
           startTheta = 0
 
         radius = diameter/2.
-        for i in xrange(3):
+        for i in range(3):
           theta = startTheta+i*120
           theta = theta*math.pi/180.
           triangle.append(qtc.QPointF(x+radius*math.cos(theta),y-radius*math.sin(theta)))
@@ -875,10 +898,65 @@ class TopologyMapView(BaseTopologicalView):
                                                      y-diameter/2., diameter, \
                                                      diameter, pen, brush)
       if currentP <= persistence:
-        self.polygonMap[key].setFlag(qtg.QGraphicsItem.ItemIsSelectable)
+        self.polygonMap[key].setFlag(qtw.QGraphicsItem.ItemIsSelectable)
         self.polygonMap[key].setZValue(1/diameter)
       self.polygonMap[key].setToolTip(str(key))
       self.polygonMap[key].setAcceptHoverEvents(True)
     self.gView.scale(self.gView.width()/self.scene.width(),
                      self.gView.height()/self.scene.height())
     self.gView.fitInView(self.scene.sceneRect(),qtc.Qt.KeepAspectRatio)
+
+  def test(self):
+    """
+        A test function for performing operations on this class that need to be
+        automatically tested such as simulating mouse and keyboard events, and
+        other internal operations. For this class in particular, we will test:
+        - Saving the view buffer in both svg and png formats.
+        - Triggering of the resize event.
+        - Subselecting data and updating this view to reflect those changes.
+        - Toggling the color of the extrema.
+        - Toggling the fill viewport action.
+        - Increasing, decreasing, and explicitly setting the persistence level.
+        - Changing the shape of the extremum glyphs
+        - Triggering the mouse move, press, and release events.
+        - Triggering the right-click context menu
+        @ In, None
+        @ Out, None
+    """
+    self.amsc.ClearSelection()
+
+    self.saveImage(self.windowTitle()+'.svg')
+    self.saveImage(self.windowTitle()+'.png')
+
+    self.resizeEvent(qtg.QResizeEvent(qtc.QSize(1,1),qtc.QSize(100,100)))
+    pair = list(self.amsc.GetCurrentLabels())[0]
+    self.amsc.SetSelection([pair,pair[0],pair[1]])
+    self.colorAction.setChecked(True)
+    self.fillAction.setChecked(True)
+    self.updateScene()
+
+    self.increasePersistence()
+    self.decreasePersistence()
+    self.colorAction.setChecked(False)
+    self.fillAction.setChecked(False)
+    for action in self.glyphGroup.actions():
+      action.setChecked(True)
+      self.updateScene()
+
+    pair = list(self.amsc.GetCurrentLabels())[0]
+    self.amsc.SetSelection([pair,pair[0],pair[1]])
+
+    genericMouseEvent = qtg.QMouseEvent(qtc.QEvent.MouseMove, qtc.QPoint(0,0), qtc.Qt.MiddleButton, qtc.Qt.MiddleButton, qtc.Qt.NoModifier)
+    self.setPersistence()
+    self.mouseReleaseEvent(genericMouseEvent, True)
+    self.mouseReleaseEvent(genericMouseEvent, False)
+    self.mousePressEvent(genericMouseEvent, True)
+    self.mousePressEvent(genericMouseEvent, False)
+    self.mouseMoveEvent(genericMouseEvent, True)
+    self.mouseMoveEvent(genericMouseEvent, False)
+    self.contextMenuEvent(genericMouseEvent)
+
+    # self.mouseMoveEvent(qtg.QMouseEvent(qtc.Qt.MouseButton), qtc.QPoint(0,0), None, qtc.QEvent.Type, qtc.QPoint(0,0), qtc.Qt.)
+    self.updateScene()
+
+    super(TopologyMapView, self).test()

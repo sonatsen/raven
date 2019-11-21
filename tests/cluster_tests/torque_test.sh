@@ -1,7 +1,15 @@
 #!/bin/bash
 
+#This is a test for testing the cluster features on a torque cluster.
+#Depending on the cluster it is used on,
+#$HOME/.raven/environments/raven_libs_profile and
+#$HOME/.raven/default_runinfo.xml may need to be created or modified
+#to setup the correct environment and provide required cluster
+#parameters.
+
+
 num_fails=0
-failed_runs="FAILED: "
+fails=''
 
 pushd ../../framework
 RAVEN_FRAMEWORK_DIR=$(pwd)
@@ -9,6 +17,7 @@ popd
 
 wait_lines ()
 {
+    echo Return code: $?
     LS_DATA="$1"
     COUNT="$2"
     NAME="$3"
@@ -19,12 +28,17 @@ wait_lines ()
         sleep 20 #Sleep in case this is just disk propagation
         lines=`ls $LS_DATA | wc -l`
     fi
+    if test $lines -ne $COUNT; then
+        echo Lines not here yet, waiting even longer.
+        sleep 60 #Sleep in case this is just disk propagation
+        lines=`ls $LS_DATA | wc -l`
+    fi
     if test $lines -eq $COUNT; then
         echo PASS $NAME
     else
         echo FAIL $NAME
+        fails=$fails', '$NAME
         num_fails=$(($num_fails+1))
-        failed_runs="$failed_runs $NAME"
         printf '\n\nStandard Error:\n'
         cat $RAVEN_FRAMEWORK_DIR/test_qsub.e*
         printf '\n\nStandard Output:\n'
@@ -103,7 +117,7 @@ rm -Rf InternalParallelPostProcessorLS/*.csv
 
 python ../../../framework/Driver.py test_internal_parallel_PP_LS.xml ../torque_mpi.xml ../cluster_runinfo.xml
 
-wait_lines 'InternalParallelPostProcessorLS/*.csv' 6 parallelPP
+wait_lines 'InternalParallelPostProcessorLS/*.csv' 4 parallelPP
 
 cd ..
 
@@ -128,13 +142,33 @@ wait_lines 'metaModelNonLinearParallel/*.png' 3 parallelEnsemblePicard
 
 cd ..
 
-# fifth test (Ensamble Model Picard in parallel)
+# sixth test (Ensamble Model Picard in parallel)
 cd InternalParallel/
 rm -Rf metaModelLinearParallel/*.png
 
 python ../../../framework/Driver.py test_ensemble_model_linear_internal_parallel.xml ../torque_mpi.xml ../cluster_runinfo.xml
 
 wait_lines 'metaModelLinearParallel/*.png' 2 parallelEnsembleLinear
+
+cd ..
+
+# seven test (HybridModel Code in parallel)
+cd InternalParallel/
+rm -Rf hybridModelCode/*.csv
+
+python ../../../framework/Driver.py test_hybrid_model_code.xml ../torque_mpi.xml ../cluster_runinfo.xml
+
+wait_lines 'hybridModelCode/*.csv' 1 parallelHybridModelCode
+
+cd ..
+
+# eighth test (HybridModel External Model in parallel)
+cd InternalParallel/
+rm -Rf hybridModelExternal/*.csv
+
+python ../../../framework/Driver.py test_hybrid_model_external.xml ../torque_mpi.xml ../cluster_runinfo.xml
+
+wait_lines 'hybridModelExternal/*.csv' 1 parallelHybridModelExternal
 
 cd ..
 
@@ -159,7 +193,6 @@ cd ..
 if test $num_fails -eq 0; then
     echo ALL PASSED
 else
-    echo $failed_runs
-    echo FAILED: $num_fails
+    echo FAILED: $num_fails $fails
 fi
 exit $num_fails

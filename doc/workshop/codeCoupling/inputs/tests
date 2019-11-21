@@ -1,0 +1,18 @@
+[Tests]
+  [./genericInterface]
+    type = 'RavenFramework'
+    input = 'example_using_generic_interface.xml'
+    UnorderedCsv = 'exampleGenericInterface/to_file.csv'
+    rel_err = 1.0e-5
+    output = 'exampleGenericInterface/to_plot_scatter.png'
+    skip = "needs to be converted to exercise test"
+  [../]
+  [./batemanInterface]
+    type = 'RavenFramework'
+    input = 'example_using_new_interface.xml'
+    UnorderedCsv = 'exampleGenericInterface/to_file.csv'
+    rel_err = 1.0e-5
+    output = 'exampleGenericInterface/to_plot_scatter.png'
+    skip = "needs to be converted to exercise test"
+  [../]
+[]

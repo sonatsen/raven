@@ -7,14 +7,15 @@
     <xsd:sequence>
       <xsd:element name="External" type="ExternalFunctionType" minOccurs="0" maxOccurs="unbounded"/>
     </xsd:sequence>
+    <xsd:attribute name="verbosity" type="verbosityAttr" default="all"/>
   </xsd:complexType>
 
   <xsd:complexType name="ExternalFunctionType">
     <xsd:sequence minOccurs="1">
-      <!-- variables should be validly defined elsewhere in the XSD? -->
-      <xsd:element name="variable" type="xsd:string" maxOccurs="unbounded"/>
+      <xsd:element name="variables" type="xsd:string" minOccurs="1" maxOccurs="1"/>
     </xsd:sequence>
     <xsd:attribute name="name" type="xsd:string" />
     <xsd:attribute name="file" type="xsd:string" />
+    <xsd:attribute name="verbosity" type="verbosityAttr" default="all"/>
   </xsd:complexType>
 </xsd:schema>

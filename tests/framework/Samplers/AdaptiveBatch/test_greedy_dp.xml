@@ -1,6 +1,5 @@
 <?xml version="1.0" ?>
 <Simulation verbosity="silent">
-
   <TestInfo>
     <name>framework/Samplers/AdaptiveBatch.GreedyDistancePersistence</name>
     <author>maljdan</author>
@@ -12,7 +11,6 @@
        That is, the point to be selected will be a combination of distance from
        other points and it will have low persistence, that is to say that its
        label has changed frequently indicating it is in an uncertain area.
-
        Note, all of the tests in AdaptiveBatch operate on a 2D input domain with
        the goal of extracting a circular limit surface with radius 0.5 and
        centered at the origin, (0,0).
@@ -22,6 +20,7 @@
       <revision author="talbpaul" date="2016-02-08">First update, looking for more failing tests to add.</revision>
       <revision author="maljdan" date="2016-04-06">Updating test cases to reflect the changes to the user input.</revision>
       <revision author="maljdan" date="2017-01-18">Adding test description.</revision>
+      <revision author="alfoa" date="2019-03-07">Modified syntax in Functions as for issue #934</revision>
     </revisions>
   </TestInfo>
 
@@ -39,7 +38,7 @@
       <Output class="DataObjects" type="PointSet">response</Output>
     </MultiRun>
     <MultiRun name="adapt">
-      <Input class="DataObjects" type="PointSet">response</Input>
+      <Input class="DataObjects" type="PointSet">inputHolder</Input>
       <Model class="Models" type="ExternalModel">function</Model>
       <Sampler class="Samplers" type="LimitSurfaceSearch">adaptiveSearch</Sampler>
       <SolutionExport class="DataObjects" type="PointSet">limit_surface</SolutionExport>
@@ -55,15 +54,19 @@
 
   <DataObjects>
     <PointSet name="dummyIn">
-      <Input>x1,x2</Input>
+      <Input>x2,x1</Input>
       <Output>OutputPlaceHolder</Output>
     </PointSet>
     <PointSet name="response">
-      <Input>x1,x2</Input>
+      <Input>x2,x1</Input>
       <Output>y</Output>
     </PointSet>
+    <PointSet name="inputHolder">
+      <Input>x2,x1</Input>
+      <Output>OutputPlaceHolder</Output>
+    </PointSet>
     <PointSet name="limit_surface">
-      <Input>x1,x2</Input>
+      <Input>x2,x1</Input>
       <Output>label</Output>
     </PointSet>
   </DataObjects>
@@ -127,7 +130,7 @@
 
   <Functions>
     <External file="goal" name="label">
-      <variable>y</variable>
+      <variables>y</variables>
     </External>
   </Functions>
 
@@ -135,10 +138,12 @@
     <Print name="greedy_dp_ls">
       <type>csv</type>
       <source>limit_surface</source>
+      <what>input,output</what>
     </Print>
     <Print name="greedy_dp_samples">
       <type>csv</type>
       <source>response</source>
+      <what>input,output</what>
     </Print>
   </OutStreams>
 

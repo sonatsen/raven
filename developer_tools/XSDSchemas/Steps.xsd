@@ -13,7 +13,7 @@
 
   <xsd:complexType name="SingleRunStepType">
     <xsd:sequence minOccurs="0">
-      <xsd:element name="Input" minOccurs="1">
+      <xsd:element name="Input" minOccurs="1" maxOccurs="unbounded">
         <xsd:complexType mixed="true">
           <!-- Specific types for class based on other XSD objects -->
           <xsd:attribute name="class" type="xsd:string" use="required"/>
@@ -42,6 +42,7 @@
       </xsd:element>
     </xsd:sequence>
     <xsd:attribute name="name"       type="xsd:string" use="required" />
+    <xsd:attribute name="verbosity" type="verbosityAttr" default="all"/>
     <xsd:attribute name="pauseAtEnd" type="RavenBool" />
   </xsd:complexType>
 
@@ -91,11 +92,12 @@
         </xsd:complexType>
       </xsd:element>
     </xsd:sequence>
-    <xsd:attribute name="name"       type="xsd:string" use="required"/>
-    <xsd:attribute name="pauseAtEnd" type="RavenBool" />
-    <xsd:attribute name="sleepTime"  type="xsd:float"  default="0.05" />
-    <xsd:attribute name="verbosity" type="xsd:string" default="all"/>
-    <xsd:attribute name="re-seeding" type="xsd:string" />
+    <xsd:attribute name="name"              type="xsd:string" use="required"/>
+    <xsd:attribute name="pauseAtEnd"        type="RavenBool" />
+    <xsd:attribute name="sleepTime"         type="xsd:float"  default="0.05" />
+    <xsd:attribute name="verbosity"         type="xsd:string" default="all"/>
+    <xsd:attribute name="re-seeding"        type="xsd:string" />
+    <xsd:attribute name="repeatFailureRuns" type="xsd:integer" />
   </xsd:complexType>
 
   <xsd:complexType name="IOStepType">
@@ -182,5 +184,6 @@
     </xsd:sequence>
     <xsd:attribute name="name"       type="xsd:string" use="required"/>
     <xsd:attribute name="pauseAtEnd" type="RavenBool" />
+    <xsd:attribute name="verbosity" type="verbosityAttr" default="all"/>
   </xsd:complexType>
 </xsd:schema>
